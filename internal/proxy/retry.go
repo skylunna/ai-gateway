@@ -29,7 +29,7 @@ func ExecuteWithRetry(client *http.Client, req *http.Request, maxRetries int) (*
 			return resp, nil // 非5xx状态码直接返回
 		}
 		// 5xx且还有重试次数
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		lastResp = resp
 		lastErr = nil // 记录最后依次响应, 但最终会返回它
