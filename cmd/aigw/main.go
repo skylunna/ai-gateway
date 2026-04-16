@@ -1,5 +1,8 @@
 package main
 
+/*
+	入口：加载配置、初始化指标、启动 HTTP 服务、优雅退出
+*/
 import (
 	"context"
 	"flag"

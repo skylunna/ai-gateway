@@ -3,6 +3,7 @@ module github.com/skylunna/ai-gateway
 go 1.24.1
 
 require (
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/prometheus/client_golang v1.23.2
 	gopkg.in/yaml.v3 v3.0.1
 )

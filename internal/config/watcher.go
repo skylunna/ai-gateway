@@ -1,0 +1,66 @@
+package config
+
+import (
+	"context"
+	"log/slog"
+	"sync/atomic"
+
+	"github.com/fsnotify/fsnotify"
+)
+
+// 持有当前配置的原子指针
+type Loader struct {
+	cfg atomic.Pointer[Config]
+}
+
+func NewLoader(path string) (*Loader, error) {
+	cfg, err := Load(path)
+	if err != nil {
+		return nil, err
+	}
+	l := &Loader{}
+	l.cfg.Store(cfg)
+	return l, nil
+}
+
+func (l *Loader) Get() *Config {
+	return l.cfg.Load()
+}
+
+// Watch 监听文件变化并原子替换配置
+func (l *Loader) Watch(ctx context.Context, path string, logger *slog.Logger) error {
+	watcher, err := fsnotify.NewWatcher()
+	if err != nil {
+		return err
+	}
+	defer watcher.Close()
+
+	if err := watcher.Add(path); err != nil {
+		return err
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.Events:
+			if !ok {
+				return nil
+			}
+			if event.Op&fsnotify.Write == fsnotify.Write {
+				newCfg, err := Load(path)
+				if err != nil {
+					logger.Warn("reload config failed, keeping old", "err", err)
+					continue
+				}
+				l.cfg.Store(newCfg)
+				logger.Info("config reloaded successfully")
+			}
+		case err, ok := <-watcher.Errors:
+			if !ok {
+				return nil
+			}
+			logger.Error("config watcher error", "err", err)
+		}
+	}
+}
