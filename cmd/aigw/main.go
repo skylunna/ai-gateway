@@ -14,6 +14,7 @@ import (
 	"github.com/skylunna/ai-gateway/internal/config"
 	"github.com/skylunna/ai-gateway/internal/metrics"
 	"github.com/skylunna/ai-gateway/internal/proxy"
+	"github.com/skylunna/ai-gateway/internal/trace"
 )
 
 func main() {
@@ -44,6 +45,12 @@ func main() {
 	// 5. 初始化 Prometheus 指标收集器
 	metrics.Init()
 
+	otelShutdown, err := trace.InitTracer(context.Background(), logger)
+	if err != nil {
+		logger.Error("failed to init OpenTelemetry", "err", err)
+		os.Exit(1)
+	}
+
 	// 6. 注册路由
 	mux := http.NewServeMux()
 	mux.Handle("/v1/chat/completions", proxy.NewHandler(loader, logger))
@@ -71,6 +78,11 @@ func main() {
 			os.Exit(1)
 		}
 	}()
+
+	logger.Info("shutdown signal received, draining connections and flushing traces...")
+	if otelShutdown != nil {
+		_ = otelShutdown(context.Background()) // 等待 Trace 数据上报完成
+	}
 
 	// 9. 监听系统信号，准备优雅退出
 	quit := make(chan os.Signal, 1)

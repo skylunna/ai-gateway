@@ -41,11 +41,16 @@ var (
 		Help:    "Request latency in seconds",
 		Buckets: prometheus.DefBuckets, // 默认耗时区间 [.005, .01, .025, .05, ... , 10]
 	}, []string{"model", "provider"})
+
+	TokensUsed = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "aigw_tokens_used_total",
+		Help: "Total tokens consumed by model",
+	}, []string{"model", "type"})
 )
 
 // 注册指标
 func Init() {
-	prometheus.MustRegister(RequestTotal, RequestDuration)
+	prometheus.MustRegister(RequestTotal, RequestDuration, TokensUsed)
 }
 
 // Handler 返回 Prometheus metrics HTTP handler
