@@ -23,6 +23,19 @@ func NewLoader(path string) (*Loader, error) {
 	return l, nil
 }
 
+// 从内存中的Config创建Loader, 用于单元测试
+// 避免测试依赖外部文件, 支持直接注入 Mock 配置
+func NewLoaderFromCfg(cfg *Config) *Loader {
+	if cfg == nil {
+		// 防御性: 防止测试中传入 nil 导致 panic
+		cfg = &Config{}
+	}
+
+	l := &Loader{}
+	l.cfg.Store(cfg)
+	return l
+}
+
 func (l *Loader) Get() *Config {
 	return l.cfg.Load()
 }
