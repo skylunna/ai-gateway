@@ -199,7 +199,7 @@ func (h *Handler) executeWithRetry(req *http.Request, maxRetries int) (*http.Res
 			return resp, nil
 		}
 
-		io.Copy(io.Discard, resp.Body)
+		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		lastResp = resp
 		lastErr = nil
