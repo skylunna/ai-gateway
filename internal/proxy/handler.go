@@ -108,7 +108,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			span.SetAttributes(attribute.Bool("cache.hit", true))
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			w.Write(cached)
+			_, _ = w.Write(cached)
 			metrics.RequestTotal.WithLabelValues(model, provider.Name, "200-cache").Inc()
 			return
 		}
