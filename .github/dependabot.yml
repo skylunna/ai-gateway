@@ -24,7 +24,6 @@ updates:
     ignore:
       - dependency-name: "go"
 
-
   - package-ecosystem: "docker"
     directory: "/"
     schedule: { interval: "weekly" }
