@@ -29,3 +29,5 @@ make test   # 运行测试（含 race detection）
 make lint   # 静态检查
 make build  # 编译二进制
 ```
+
+## 📊 Performance Benchmarks
