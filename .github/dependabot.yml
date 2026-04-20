@@ -5,7 +5,7 @@
 
 version: 2
 updates:
-
+  # 强制刷新: 2026-04-20  <-- 加这行注释
   - package-ecosystem: "gomod"
     directory: "/"
     schedule:
