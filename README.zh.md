@@ -1,4 +1,4 @@
-![Product Logo](./assets/luner-logo-fat.png)
+![Product Logo](./assets/logo/luner-logo-fat.png)
 # ai-gateway
 
 <p align="center">
