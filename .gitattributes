@@ -1,0 +1,14 @@
+* text=auto
+*.go text
+*.py text
+*.yml text
+*.yaml text
+*.md text
+*.toml text
+
+
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
