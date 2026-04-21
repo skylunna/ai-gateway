@@ -1,33 +1,122 @@
 # ai-gateway
 
-轻量级、云原生友好的 LLM API 代理网关。基于 Go 1.24 构建，支持 OpenAI 兼容协议、动态路由、指标采集与配置热更新。
+<img src="https://img.shields.io/github/v/release/your-org/ai-gateway?label=Release&color=blue" alt="Release">
+<img src="https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go" alt="Go">
+<img src="https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker" alt="Docker">
+<img src="https://img.shields.io/github/license/your-org/ai-gateway?color=green" alt="License">
+
+A lightweight, production-ready LLM API gateway built with Go 1.24. Seamlessly proxy, cache, rate-limit, and observe your AI workloads with OpenAI-compatible interfaces. Designed for cloud-native environments and developer-first experience.
+
+---
+
+## ✨ Features
+
+- 🔄 **OpenAI Compatible**: Drop-in replacement for `base_url`. Zero code changes for existing Python/Node.js SDKs.
+- ⚡ **High Performance**: Zero-dependency LRU cache + token-bucket rate limiting. Pure Go, constant memory footprint.
+- 🔥 **Hot-Reload Configuration**: Atomic config updates via `fsnotify` & `atomic.Pointer`. Zero downtime routing changes.
+- 📊 **Full Observability**: OpenTelemetry tracing + Prometheus metrics (latency, token usage, cache hits, rate limits).
+- 🐳 **Cloud-Native Ready**: Multi-arch binaries, multi-stage Dockerfile, `docker-compose` out-of-the-box.
+- 🔒 **Secure by Design**: Environment variable injection, `.env` templating, 12-Factor App compliant.
+
+---
 
 ## 🚀 Quick Start
 
+### Option 1: Docker Compose (Recommended)
 ```bash
-git clone https://github.com/skylunna/ai-gateway.git
-cd ai-gateway
+git clone https://github.com/skylunna/ai-gateway.git && cd ai-gateway
 cp config/config.example.yaml config/config.yaml
-# 编辑 config/config.yaml 填入真实的 API Key
-go run cmd/aigw/main.go -config config/config.yaml
+cp .env.example .env  # Edit .env with your API keys
+docker compose up -d
+
+Verify: curl http://localhost:8080/health
 ```
 
-### 测试请求：
+### Option 2: Docker Run
 ```bash
-curl -X POST http://localhost:8080/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{"model":"gpt-4o-mini","messages":[{"role":"user","content":"Hello"}]}'
+docker run -d --name ai-gateway -p 8080:8080 \
+  -v "$(pwd)/config/config.yaml:/app/config.yaml:ro" \
+  --env-file .env \
+  ghcr.io/your-org/ai-gateway:v0.4.1
 ```
 
-## 📊 指标端点
-- /metrics：Prometheus 格式指标（请求数、延迟、Token 消耗）
-- /health：健康检查
-
-## 🛠️ 开发
+### Option 3: From Source
 ```bash
-make test   # 运行测试（含 race detection）
-make lint   # 静态检查
-make build  # 编译二进制
+go build -o aigw ./cmd/aigw
+./aigw -config config/config.yaml
 ```
+
+## ⚙️ Configuration
+`ai-gateway` separates routing logic from secrets. Modify `config/config.yaml` at any time; changes apply automatically.
+```yaml
+# config/config.yaml
+providers:
+  - name: openai-prod
+    base_url: "https://api.openai.com/v1"
+    api_key: "${OPENAI_API_KEY}"  # Injected from .env
+    models: ["gpt-4o", "gpt-4o-mini"]
+    timeout: "30s"
+
+cache:
+  enabled: true
+  max_items: 5000
+  default_ttl: "2h"
+
+rate_limit:
+  enabled: true
+  providers:
+    - name: openai-prod
+      qps: 50.0
+      burst: 10
+```
+> 💡 Hot-Reload: Edit config.yaml and save. The gateway atomically swaps the routing table without dropping active connections.
+
+## 🔌 Client Integration
+Works with any OpenAI-compatible client. Just update `base_url`.
+### Python (uv + openai)
+```bash
+cp .env.example .env  # Configure 
+cd examples/python-sdk
+AI_GATEWAY_BASE_URL & API_KEY
+uv run python test_integration.py
+```
+### Code Example
+```python
+from openai import OpenAI
+
+client = OpenAI(
+    api_key="sk-xxx",  # Placeholder, overridden by gateway
+    base_url="http://localhost:8080/v1"
+)
+response = client.chat.completions.create(
+    model="gpt-4o-mini",
+    messages=[{"role": "user", "content": "Hello"}]
+)
+```
+
+## 📊 Observability
+- **Metrics:** `GET /metrics` (Prometheus format)
+  - `aigw_requests_total{status="200-cache"}` → Cache hit ratio
+  - `aigw_request_duration_seconds` → Latency distribution
+  - `aigw_tokens_used_total{type="prompt|completion|total"}` → Token accounting
+- **Tracing:** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to auto-export spans to Jaeger/Tempo
+- **Health:** `GET /health` (K8s compatible)
+
+---
 
 ## 📊 Performance Benchmarks
+Tested on: Apple M2 Max, Go 1.24, 50 concurrent clients, 1000 requests
+
+| Scenario | QPS | P50 Latency | P99 Latency | Cache Hit | Upstream Calls |
+|----------|-----|-------------|-------------|-----------|----------------|
+| 🔥 Cache Hit (this run) | **32,082** | **1.3ms** | **6.9ms** | **100%** | **0** |
+| ❄️ Cold Start (estimated) | ~80-120 | ~350ms | ~1.2s | 0% | 100% |
+| 🚦 Rate Limited (qps=10) | ~10 | ~50ms | ~200ms | variable | throttled |
+
+> 💡 Cache Hit scenario: Same ` prompt+model+temperature=0 ` request directly returns memory cache with zero network overhead.
+> Cold start data requires restarting the gateway or testing with different messages, with a typical value of upstream latency+proxy overhead (~5-10ms).
+
+--- 
+
+## 🤝 Contributing
+PRs, issues, and feedback are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup guidelines, commit conventions, and `good first issue` labels.

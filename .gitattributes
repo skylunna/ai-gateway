@@ -12,3 +12,7 @@
 *.jpeg binary
 *.gif binary
 *.ico binary
+
+
+examples/python-client-test/** linguist-detectable=true
+examples/python-client-test/** linguist-language=Python
