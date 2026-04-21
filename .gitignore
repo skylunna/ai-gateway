@@ -79,5 +79,4 @@ logs/
 *.bakluner
 luner.exe
 bin/
-luner
 go.mod.bak
