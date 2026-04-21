@@ -10,10 +10,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/skylunna/ai-gateway/internal/cache"
-	"github.com/skylunna/ai-gateway/internal/config"
-	"github.com/skylunna/ai-gateway/internal/limiter"
-	"github.com/skylunna/ai-gateway/internal/metrics"
+	"github.com/skylunna/luner/internal/cache"
+	"github.com/skylunna/luner/internal/config"
+	"github.com/skylunna/luner/internal/limiter"
+	"github.com/skylunna/luner/internal/metrics"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -21,7 +21,7 @@ import (
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
 )
 
-var tracer = otel.Tracer("ai-gateway-proxy")
+var tracer = otel.Tracer("luner-proxy")
 
 type Handler struct {
 	loader  *config.Loader

@@ -1,11 +1,11 @@
 version: 2
 
-project_name: ai-gateway
+project_name: luner
 
 builds:
-  - id: aigw
-    main: ./cmd/aigw
-    binary: aigw
+  - id: luner
+    main: ./cmd/luner
+    binary: luner
     env:
       - CGO_ENABLED=0
     goos:

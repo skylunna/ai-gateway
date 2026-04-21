@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/skylunna/ai-gateway/internal/cache"
-	"github.com/skylunna/ai-gateway/internal/config"
-	"github.com/skylunna/ai-gateway/internal/limiter"
-	"github.com/skylunna/ai-gateway/internal/metrics"
-	"github.com/skylunna/ai-gateway/internal/proxy"
-	"github.com/skylunna/ai-gateway/internal/trace"
+	"github.com/skylunna/luner/internal/cache"
+	"github.com/skylunna/luner/internal/config"
+	"github.com/skylunna/luner/internal/limiter"
+	"github.com/skylunna/luner/internal/metrics"
+	"github.com/skylunna/luner/internal/proxy"
+	"github.com/skylunna/luner/internal/trace"
 )
 
 func main() {
@@ -89,7 +89,7 @@ func main() {
 
 	// 8. 异步启动服务
 	go func() {
-		logger.Info("starting ai-gateway", "listen", server.Addr, "version", cfg.Version)
+		logger.Info("starting luner", "listen", server.Addr, "version", cfg.Version)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP server failed", "err", err)
 			os.Exit(1)
