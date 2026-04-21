@@ -4,7 +4,7 @@
 
 <p align="center">
   <strong>English</strong> | <a href="README.zh.md">中文</a>
-</p>s
+</p>
 
 [![Release](https://img.shields.io/github/v/release/skylunna/ai-gateway?label=Release&color=blue)](https://github.com/your-org/ai-gateway/releases)
 [![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
