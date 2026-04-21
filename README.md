@@ -1,3 +1,5 @@
+![Product Logo](./assets/luner-logo.png)
+
 # ai-gateway
 
 <p align="center">
