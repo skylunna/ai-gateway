@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
+## [v0.4.2]
+
+### 🚀 Added
+- **Project Rebranded**: Renamed from `ai-gateway` to `luner` for a concise, memorable identity.
+- **Go Module Path**: Updated to `github.com/<your-username>/luner`.
+- **Metrics Prefix**: All Prometheus metrics now use `luner_*` (e.g., `luner_requests_total`, `luner_tokens_used`).
+
+### 🛠️ Changed
+- All configuration files, Docker images, CI pipelines, and documentation updated to reflect the new name.
+- Docker Compose & image templates aligned with `ghcr.io/<your-username>/luner`.
+
+### 📖 Documentation
+- Updated `README.md` & `README.zh.md` with new branding & quick-start guides.
+- Added migration guide for existing users upgrading from `v0.4.1`.
+
+### ⚠️ Breaking Changes (v0.4.1 → v0.4.2)
+- **Go Import Path**: Change `github.com/your-org/ai-gateway` → `github.com/<your-username>/luner` in your `go.mod` & imports.
+- **Metrics**: Replace `aigw_*` → `luner_*` in Prometheus/Grafana queries & alerting rules.
+- **Docker**: Pull from `ghcr.io/<your-username>/luner` instead of the old repository.
+
+> 💡 **Runtime Behavior**: Unchanged. This release is purely a branding & DX improvement. Upgrade is safe if you update the paths above.
+
 ## [v0.4.1]
 
 ### 🚀 Added

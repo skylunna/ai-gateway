@@ -19,6 +19,12 @@ import (
 	"github.com/skylunna/luner/internal/trace"
 )
 
+var (
+	Version   = "dev"
+	commit    = "unknown"
+	buildDate = "unknown"
+)
+
 func main() {
 	// 1. 解析启动参数
 	configPath := flag.String("config", "config/config.yaml", "path to configuration file")
@@ -35,8 +41,28 @@ func main() {
 		logger.Error("failed to load configuration", "err", err, "path", *configPath)
 		os.Exit(1)
 	}
-	logger.Info("initial configuration loaded", "path", *configPath)
-
+	cfg := loader.Get()
+	if err := cfg.Validate(); err != nil {
+		logger.Error("invalid configuration", "path", *configPath, "err", err)
+		logger.Info("tip: check config.yaml syntax and ensure environment variables are exported")
+		os.Exit(1)
+	}
+	summary := cfg.Summary()
+	logger.Info("configuration validated", "summary", summary)
+	// logger.Info("initial configuration loaded", "path", *configPath)
+	// 打印精简路由表（仅 Info 级别，避免刷屏）
+	logger.Info("loaded routing table", "routes", func() []map[string]any {
+		var routes []map[string]any
+		for _, p := range cfg.Providers {
+			routes = append(routes, map[string]any{
+				"provider": p.Name,
+				"models":   p.Models,
+				"base_url": cfg.MaskURL(p.BaseURL), // 脱敏 URL
+				"timeout":  p.Timeout,
+			})
+		}
+		return routes
+	}())
 	// 4. 后台启动配置监听（文件修改后自动原子替换路由表）
 	go func() {
 		if err := loader.Watch(context.Background(), *configPath, logger); err != nil {
@@ -52,7 +78,7 @@ func main() {
 		logger.Error("failed to init OpenTelemetry", "err", err)
 		os.Exit(1)
 	}
-	cfg := loader.Get()
+
 	var gwCache *cache.LRU
 	if cfg.Cache.Enabled {
 		gwCache = cache.NewLRU(cfg.Cache.MaxItems, cfg.Cache.TTL)
@@ -89,7 +115,7 @@ func main() {
 
 	// 8. 异步启动服务
 	go func() {
-		logger.Info("starting luner", "listen", server.Addr, "version", cfg.Version)
+		logger.Info("starting luner", "listen", server.Addr, "version", Version, "commit", commit, "date", buildDate)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			logger.Error("HTTP server failed", "err", err)
 			os.Exit(1)

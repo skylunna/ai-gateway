@@ -12,12 +12,11 @@
 [![License](https://img.shields.io/github/license/skylunna/luner?color=green)](https://github.com/skylunna/luner/blob/main/LICENSE)
 
 
-A lightweight, production-ready LLM API gateway built with Go 1.24. Seamlessly proxy, cache, rate-limit, and observe your AI workloads with OpenAI-compatible interfaces. Designed for cloud-native environments and developer-first experience.
+A lightweight LLM API gateway that can be used for production. Seamlessly proxy, cache, rate limit, and observe your AI workload using OpenAI compatible interfaces. Specially designed for cloud native environments and developers to prioritize experience.
 
 ---
 
 ## ✨ Features
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
 
 
 - **OpenAI Compatible**: Drop-in replacement for `base_url`. Zero code changes for existing Python/Node.js SDKs.
@@ -30,6 +29,7 @@ A lightweight, production-ready LLM API gateway built with Go 1.24. Seamlessly p
 ---
 
 ## 🚀 Quick Start
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
 
 ### Option 1: Docker Compose (Recommended)
 ```bash

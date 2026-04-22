@@ -1,15 +1,20 @@
 package proxy
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
+	"math/rand"
 	"net/http"
+	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/skylunna/luner/internal/api"
 	"github.com/skylunna/luner/internal/cache"
 	"github.com/skylunna/luner/internal/config"
 	"github.com/skylunna/luner/internal/limiter"
@@ -19,6 +24,7 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
+	"go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("luner-proxy")
@@ -42,8 +48,12 @@ func NewHandler(loader *config.Loader, logger *slog.Logger, c *cache.LRU, lm *li
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	requestID := h.extractRequestID(r)
+	// 包装 ResponseWriter，保留 context
+	rw := &responseWriter{ResponseWriter: w, ctx: r.Context()}
+
 	if r.URL.Path != "/v1/chat/completions" || r.Method != http.MethodPost {
-		h.writeError(w, "endpoint not found", http.StatusNotFound)
+		h.writeAPIError(rw, api.NewError(http.StatusNotFound, api.ErrInvalidRequest, "endpoint not found", requestID))
 		return
 	}
 
@@ -57,14 +67,14 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "read body failed")
-		h.writeError(w, "invalid request body", http.StatusBadRequest)
+		h.writeAPIError(rw, api.NewError(http.StatusBadRequest, api.ErrInvalidRequest, "invalid request body", requestID))
 		return
 	}
 	defer r.Body.Close()
 
 	var reqPayload map[string]any
 	if err := json.Unmarshal(bodyBytes, &reqPayload); err != nil {
-		h.writeError(w, "invalid JSON payload", http.StatusBadRequest)
+		h.writeAPIError(rw, api.NewError(http.StatusBadRequest, api.ErrInvalidRequest, "invalid JSON payload", requestID))
 		return
 	}
 
@@ -74,7 +84,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	if model == "" {
 		metrics.RequestTotal.WithLabelValues("unknown", "unknown", "400").Inc()
-		h.writeError(w, "field 'model' is required", http.StatusBadRequest)
+		h.writeAPIError(rw, api.NewError(http.StatusBadRequest, api.ErrInvalidRequest, "field 'model' is required", requestID))
 		return
 	}
 
@@ -85,7 +95,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	provider := h.resolveProvider(cfg, model)
 	if provider == nil {
 		metrics.RequestTotal.WithLabelValues(model, "unknown", "400").Inc()
-		h.writeError(w, fmt.Sprintf("unsupported model: %s", model), http.StatusBadRequest)
+		h.writeAPIError(rw, api.NewError(http.StatusBadRequest, api.ErrInvalidRequest, fmt.Sprintf("unsupported model: %s", model), requestID))
 		return
 	}
 	span.SetAttributes(attribute.String("llm.provider", provider.Name))
@@ -95,7 +105,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		bucket := h.limiter.GetBucket(provider.Name)
 		if bucket != nil && !bucket.Allow() {
 			metrics.RequestTotal.WithLabelValues(model, provider.Name, "429").Inc()
-			h.writeError(w, "rate limit exceeded", http.StatusTooManyRequests)
+			h.writeAPIError(rw, api.NewError(http.StatusTooManyRequests, api.ErrRateLimited, "rate limit exceeded", requestID))
 			return
 		}
 	}
@@ -106,11 +116,26 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		cacheKey := cache.GenerateKey(model, msgJSON, temp)
 		if cached, ok := h.cache.Get(cacheKey); ok {
 			span.SetAttributes(attribute.Bool("cache.hit", true))
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write(cached)
+			rw.Header().Set("Content-Type", "application/json; charset=utf-8")
+			rw.WriteHeader(http.StatusOK)
+			_, _ = rw.Write(cached)
 			metrics.RequestTotal.WithLabelValues(model, provider.Name, "200-cache").Inc()
 			return
+		}
+	}
+
+	// 流式请求自动注入 stream_options，确保上游返回 usage 供指标统计
+	if stream {
+		if _, ok := reqPayload["stream_options"]; !ok {
+			reqPayload["stream_options"] = map[string]any{
+				"include_usage": true,
+			}
+			// 重新序列化 body
+			bodyBytes, err = json.Marshal(reqPayload)
+			if err != nil {
+				h.writeAPIError(rw, api.NewError(http.StatusBadRequest, api.ErrInvalidRequest, "invalid stream options", requestID))
+				return
+			}
 		}
 	}
 
@@ -127,7 +152,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "build request failed")
-		h.writeError(w, "internal server error", http.StatusInternalServerError)
+		h.writeAPIError(rw, api.NewError(http.StatusInternalServerError, api.ErrInternal, "internal server error", requestID))
 		return
 	}
 
@@ -155,19 +180,25 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, "upstream failed")
-		h.writeError(w, "upstream timeout or network error", http.StatusBadGateway)
+		h.writeAPIError(rw, api.NewError(http.StatusBadGateway, api.ErrProviderDown, "upstream timeout or network error", requestID))
 		return
 	}
 	defer resp.Body.Close()
 
 	// 6. 响应透传 & Token 统计
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(resp.StatusCode)
+	rw.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	rw.WriteHeader(resp.StatusCode)
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		h.writeAPIError(rw, api.FromUpstream(resp.StatusCode, body, requestID))
+		return
+	}
 
 	if !stream && h.cache != nil {
 		respBody, err := io.ReadAll(resp.Body)
 		if err == nil {
-			_, _ = w.Write(respBody)
+			_, _ = rw.Write(respBody)
 			// 缓存成功响应
 			msgJSON, _ := json.Marshal(reqPayload["messages"])
 			cacheKey := cache.GenerateKey(model, msgJSON, temp)
@@ -177,13 +208,83 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		} else {
 			span.RecordError(err)
 		}
+	} else if stream {
+		// 流式解析 & 透传（提取 Token 指标）
+		if err := h.streamUsageParser(rw, resp, model, provider.Name, requestID); err != nil {
+			h.logger.Warn("stream parse/forward failed", "err", err, "request_id", requestID)
+		}
 	} else {
-		_, _ = io.Copy(w, resp.Body) // 流式直接管道，不解析 Token（v0.3.0 补充）
+		// 非流式但未启用缓存，直接透传
+		_, _ = io.Copy(rw, resp.Body)
+	}
+}
+
+// streamUsageParser 拦截 SSE 流，透传给客户端并提取 token usage
+// flush=true 时强制每次 chunk 立即发送，保持低延迟体验
+func (h *Handler) streamUsageParser(w http.ResponseWriter, resp *http.Response, model, provider, requestID string) error {
+	flusher, canFlush := w.(http.Flusher)
+	reader := bufio.NewReader(resp.Body)
+
+	var usageFound atomic.Bool
+	var totalPrompt, totalCompletion int64
+
+	for {
+		line, err := reader.ReadBytes('\n')
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return fmt.Errorf("read stream chunk: %w", err)
+		}
+
+		// 1. 透传 chunk 给客户端
+		if _, err := w.Write(line); err != nil {
+			return fmt.Errorf("write to client: %w", err)
+		}
+
+		// 2. 强制刷新（保持流式低延迟）
+		if canFlush {
+			flusher.Flush()
+		}
+
+		// 3. 解析 data 行提取 usage
+		lineStr := string(line)
+		if strings.HasPrefix(strings.TrimSpace(lineStr), "data:") {
+			data := strings.TrimSpace(strings.TrimPrefix(lineStr, "data:"))
+			if data == "[DONE]" {
+				break
+			}
+
+			// 优化：仅当未找到 usage 时解析 JSON，降低 CPU 开销
+			if !usageFound.Load() {
+				var chunk struct {
+					Usage struct {
+						PromptTokens     int `json:"prompt_tokens"`
+						CompletionTokens int `json:"completion_tokens"`
+						TotalTokens      int `json:"total_tokens"`
+					} `json:"usage"`
+				}
+				if err := json.Unmarshal([]byte(data), &chunk); err == nil && chunk.Usage.TotalTokens > 0 {
+					totalPrompt = int64(chunk.Usage.PromptTokens)
+					totalCompletion = int64(chunk.Usage.CompletionTokens)
+
+					metrics.TokensUsed.WithLabelValues(model, "prompt").Add(float64(totalPrompt))
+					metrics.TokensUsed.WithLabelValues(model, "completion").Add(float64(totalCompletion))
+					metrics.TokensUsed.WithLabelValues(model, "total").Add(float64(chunk.Usage.TotalTokens))
+
+					usageFound.Store(true)
+					h.logger.Debug("stream usage extracted", "model", model, "provider", provider, "total_tokens", chunk.Usage.TotalTokens, "request_id", requestID)
+				}
+			}
+		}
 	}
 
-	if statusCode >= 400 {
-		span.SetStatus(codes.Error, fmt.Sprintf("http %d", statusCode))
+	// 4. 若流结束仍未获取 usage（上游不支持或配置缺失），记录兜底指标
+	if !usageFound.Load() {
+		metrics.TokensUsed.WithLabelValues(model, "unknown").Add(1)
+		h.logger.Debug("stream usage not found, recorded as unknown", "model", model, "provider", provider, "request_id", requestID)
 	}
+	return nil
 }
 
 func (h *Handler) parseAndRecordTokens(model string, body []byte) {
@@ -253,8 +354,36 @@ func (h *Handler) executeWithRetry(req *http.Request, maxRetries int) (*http.Res
 	return nil, lastErr
 }
 
-func (h *Handler) writeError(w http.ResponseWriter, msg string, code int) {
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(code)
-	fmt.Fprintf(w, `{"error":{"message":"%s","type":"api_error"}}`, msg)
+// writeAPIError 统一错误入口（自动注入 TraceID）
+func (h *Handler) writeAPIError(w http.ResponseWriter, err *api.APIError) {
+	if err.Detail.RequestID == "" {
+		if rw, ok := w.(*responseWriter); ok {
+			if span := trace.SpanFromContext(rw.ctx); span.SpanContext().HasTraceID() {
+				err.Detail.RequestID = span.SpanContext().TraceID().String()
+			}
+		}
+	}
+	err.WriteJSON(w)
+}
+
+// extractRequestID 从请求头或 OTel Span 中提取 TraceID
+func (h *Handler) extractRequestID(r *http.Request) string {
+	if rid := r.Header.Get("X-Request-Id"); rid != "" {
+		return rid
+	}
+
+	if span := trace.SpanFromContext(r.Context()); span.SpanContext().HasTraceID() {
+		return span.SpanContext().TraceID().String()
+	}
+
+	return fmt.Sprintf("luner-%d-%04x", time.Now().UnixNano(), rand.Int31n(0xFFFF))
+}
+
+type responseWriter struct {
+	http.ResponseWriter
+	ctx context.Context
+}
+
+func (rw *responseWriter) Context() context.Context {
+	return rw.ctx
 }

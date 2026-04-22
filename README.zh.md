@@ -11,12 +11,12 @@
 [![License](https://img.shields.io/github/license/skylunna/luner?color=green)](https://github.com/skylunna/luner/blob/main/LICENSE)
 
 
-基于 Go 1.24 构建的轻量级、生产就绪的 LLM API 网关。通过与 OpenAI 兼容的接口，无缝实现对 AI 工作负载的代理、缓存、限流和可观测性监控。专为云原生环境和开发者优先体验而设计。
+轻量级、可用于生产的 LLM API 网关。通过与 OpenAI 兼容的接口，无缝实现对 AI 工作负载的代理、缓存、限流和可观测性监控。专为云原生环境和开发者优先体验而设计。
 
 ---
 
 ## ✨ 特性
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
+
 
 - **兼容 OpenAI**: 零侵入替换 `base_url`。现有的 Python/Node.js SDK 无需修改任何代码。
 - **高性能**: 零依赖的 LRU 缓存 + 令牌桶限流。纯 Go 实现，内存占用极低且稳定。
@@ -28,6 +28,7 @@
 ---
 
 ## 🚀 快速开始
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
 
 ### 方案 1：Docker Compose（推荐）
 ```bash

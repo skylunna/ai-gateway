@@ -20,9 +20,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X main.Version={{.Version}}
-      - -X main.Commit={{.Commit}}
-      - -X main.Date={{.Date}}
+      - -X github.com/skylunna/luner/cmd/luner.Version={{.Version}}
+      - -X github.com/skylunna/luner/cmd/luner.commit={{.Commit}}
+      - -X github.com/skylunna/luner/cmd/luner.buildDate={{.Date}}
 
 archives:
   - format: tar.gz

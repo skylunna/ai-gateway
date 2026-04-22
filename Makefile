@@ -1,19 +1,52 @@
-.PHONY: init run lint test build clean
+.PHONY: init run lint test build clean version
+
+MODULE := github.com/skylunna/luner
+VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT := $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+DATE := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+
+ifeq ($(OS),Windows_NT)
+    # Windows 环境
+    EXT := .exe
+    RM := powershell -NoProfile -Command "Remove-Item -Force -Recurse -ErrorAction SilentlyContinue"
+else
+    # Linux / macOS
+    UNAME_S := $(shell uname -s)
+    ifeq ($(UNAME_S),Darwin)
+        EXT :=
+    else
+        EXT :=
+    endif
+    RM := rm -rf
+endif
+
+build:
+	go build -ldflags="-s -w \
+		-X $(MODULE)/cmd/luner.Version=$(VERSION) \
+		-X $(MODULE)/cmd/luner.commit=$(COMMIT) \
+		-X $(MODULE)/cmd/luner.buildDate=$(DATE)" \
+		-o bin/luner$(EXT) ./cmd/luner
+	@echo " Built bin/luner$(EXT) (version=$(VERSION) commit=$(COMMIT))"
+
+run:
+	go run ./cmd/luner -config config/config.yaml
+
+version:
+	@echo "Version: $(VERSION)"
+	@echo "Commit:  $(COMMIT)"
+	@echo "Date:    $(DATE)"
+
+clean:
+	$(RM) bin/
+	@echo " Cleaned bin/"
 
 init:
-	@cp -n configs/config.example.yaml configs/config.yaml 2>/dev/null || echo "✅ config.yaml already exists"
-
-run: init
-	go run ./cmd/luner
-
-lint:
-	golangci-lint run
+	@echo "🔧 Installing dev tools..."
+	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+	@echo " Done"
 
 test:
 	go test -race -v ./...
 
-build:
-	CGO_ENABLED=0 go build -ldflags="-s -w" -o bin/luner ./cmd/luner
-
-clean:
-	rm -rf bin/
+lint:
+	golangci-lint run ./...

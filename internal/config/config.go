@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -103,4 +104,68 @@ func Load(path string) (*Config, error) {
 	}
 
 	return &cfg, nil
+}
+
+func (c *Config) Validate() error {
+	if len(c.Providers) == 0 {
+		return fmt.Errorf("config: at least one provider is required")
+	}
+	for i, p := range c.Providers {
+		if p.Name == "" {
+			return fmt.Errorf("config: providers[%d].name is required", i)
+		}
+		if p.BaseURL == "" {
+			return fmt.Errorf("config: providers[%d].base_url is required", i)
+		}
+		if p.APIKey == "" {
+			return fmt.Errorf("config: providers[%d].api_key is required (check env vars)", i)
+		}
+		if len(p.Models) == 0 {
+			return fmt.Errorf("config: providers[%d].models must contain at least one model", i)
+		}
+	}
+	return nil
+}
+
+// String 返回 Provider 的精简描述（用于日志）
+func (p *ProviderConfig) String() string {
+	return fmt.Sprintf("%s(models=%v, base_url=%s, timeout=%s)",
+		p.Name,
+		p.Models,
+		maskURL(p.BaseURL), // 脱敏：隐藏 API Key 参数
+		p.Timeout,
+	)
+}
+
+// MaskURL 脱敏 URL 中的敏感参数
+func maskURL(url string) string {
+	if idx := strings.Index(url, "?"); idx != -1 {
+		return url[:idx] + "?***"
+	}
+	return url
+}
+
+func (c *Config) MaskURL(url string) string {
+	return maskURL(url)
+}
+
+// Summary 返回配置摘要（用于启动日志）
+func (c *Config) Summary() string {
+	var sb strings.Builder
+	sb.WriteString(fmt.Sprintf("providers=%d, cache=%v, rate_limit=%v",
+		len(c.Providers),
+		c.Cache.Enabled,
+		c.RateLimit.Enabled,
+	))
+	if len(c.Providers) > 0 {
+		sb.WriteString(" [")
+		for i, p := range c.Providers {
+			if i > 0 {
+				sb.WriteString(", ")
+			}
+			sb.WriteString(fmt.Sprintf("%s:%v", p.Name, p.Models))
+		}
+		sb.WriteString("]")
+	}
+	return sb.String()
 }

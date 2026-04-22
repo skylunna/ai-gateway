@@ -66,8 +66,26 @@ func (l *Loader) Watch(ctx context.Context, path string, logger *slog.Logger) er
 					logger.Warn("reload config failed, keeping old", "err", err)
 					continue
 				}
+				if err := newCfg.Validate(); err != nil {
+					logger.Warn("reload config validation failed, keeping old", "err", err)
+					continue
+				}
 				l.cfg.Store(newCfg)
-				logger.Info("config reloaded successfully")
+				logger.Info("configuration reloaded",
+					"summary", newCfg.Summary(),
+					"routes", func() []map[string]any {
+						var routes []map[string]any
+						for _, p := range newCfg.Providers {
+							routes = append(routes, map[string]any{
+								"provider": p.Name,
+								"models":   p.Models,
+								"base_url": maskURL(p.BaseURL),
+								"timeout":  p.Timeout,
+							})
+						}
+						return routes
+					}(),
+				)
 			}
 		case err, ok := <-watcher.Errors:
 			if !ok {
