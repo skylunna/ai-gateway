@@ -15,9 +15,9 @@ GREEN='\033[0;32m'
 YELLOW='\033[0;33m'
 RED='\033[0;31m'
 GRAY='\033[0;90m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Payloads (using printf for variable substitution)
+# Payloads
 get_payload_cache() {
     printf '{"model":"%s","messages":[{"role":"user","content":"Explain Go context in 1 sentence"}],"temperature":0}' "$MODEL"
 }
@@ -145,7 +145,7 @@ run_bench() {
     temp_file=$(mktemp)
     printf '%s\n' "$payload" > "$temp_file"
     
-    # Run hey benchmark (removed -q 0 to avoid overwhelming local gateway)
+    # Run hey benchmark
     hey -c "$CONCURRENCY" -n "$REQUESTS" -m POST \
         -H "Content-Type: application/json" \
         -D "$temp_file" \
@@ -163,7 +163,7 @@ run_bench() {
         qps="${BASH_REMATCH[1]//,/}"
     fi
     
-    # Extract P50/P99 (hey output format: "50% in 0.12 secs")
+    # Extract P50/P99
     local p50="N/A"
     local p99="N/A"
     
@@ -176,7 +176,6 @@ run_bench() {
     
     echo -e "  QPS: $qps | P50: ${p50}s | P99: ${p99}s"
     
-    # Debug output if parsing failed
     if [[ "$p50" == "N/A" ]]; then
         echo -e "${GRAY}  [DEBUG] Raw output snippet (Look for Error distribution):${NC}"
         echo "$content" | head -30 | while IFS= read -r line; do
@@ -228,7 +227,6 @@ print_summary() {
     echo -e "   Real-world workloads will see lower QPS but still benefit from repeated prompts."
 }
 
-# Main execution
 main() {
     parse_args "$@"
     
@@ -241,5 +239,4 @@ main() {
     write_info "Benchmark complete!"
 }
 
-# Run main function with all arguments
 main "$@"

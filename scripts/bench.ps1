@@ -31,7 +31,6 @@ function Check-Deps {
     }
 }
 
-# Wait for gateway health
 function Wait-Gateway {
     Write-Info "Waiting for luner gateway at $GatewayUrl..."
     for ($i = 0; $i -lt 30; $i++) {
@@ -48,7 +47,6 @@ function Wait-Gateway {
     exit 1
 }
 
-# Warm up cache
 function Warm-Cache {
     Write-Info "Warming up cache..."
     for ($i = 0; $i -lt 3; $i++) {
@@ -59,18 +57,15 @@ function Warm-Cache {
     }
 }
 
-# Run benchmark and extract metrics (FIXED)
 function Run-Bench {
     param($Name, $Payload)
     $OutputFile = "bench_$Name.txt"
     
     Write-Info "Running $Name benchmark ($Concurrency concurrent, $Requests requests)..."
     
-    # Write payload to temp file
     $TempFile = [System.IO.Path]::GetTempFileName()
     $Payload | Out-File -FilePath $TempFile -Encoding utf8
     
-    # 移除了 -q 0 (它不控制进度条，而是取消所有速率限制，容易导致本地网关崩溃)
     hey -c $Concurrency -n $Requests -m POST `
         -H "Content-Type: application/json" `
         -D $TempFile `
