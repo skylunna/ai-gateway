@@ -55,3 +55,22 @@ changelog:
       - "^chore:"
       - Merge pull request
       - Merge branch
+
+# 放在文件末尾，与 builds/archives 同级
+dockers:
+  - id: luner
+    image_templates:
+      - "ghcr.io/skylunna/luner:{{ .Version }}"
+      - "ghcr.io/skylunna/luner:latest"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.source=https://github.com/skylunna/luner"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--platform=linux/amd64"
+    skip_push: false
+
+docker_manifests:
+  - name_template: "ghcr.io/skylunna/luner:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/skylunna/luner:{{ .Version }}-amd64"
