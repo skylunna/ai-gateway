@@ -1,0 +1,66 @@
+version: '3.8'
+services:
+  # luner 网关
+  luner:
+    build: .
+    image: ghcr.io/skylunna/luner:v0.4.2
+    container_name: luner
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./config:/app/config:ro
+    env_file:
+      - .env
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Prometheus 采集指标
+  prometheus:
+    image: prom/prometheus:v2.45.0
+    container_name: prometheus
+    ports:
+      - "9091:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  # Grafana 可视化
+  grafana:
+    image: grafana/grafana:10.0.0
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana-data:/var/lib/grafana
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
+  # Tempo 分布式追踪
+  tempo:
+    image: grafana/tempo:2.1.0
+    container_name: tempo
+    ports:
+      - "4318:4318"
+      - "3200:3200"
+    volumes:
+      - tempo-data:/tmp/tempo
+    command: ['-config.file=/etc/tempo.yaml']
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  tempo-data:

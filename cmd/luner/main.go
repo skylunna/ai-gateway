@@ -73,6 +73,13 @@ func main() {
 	// 5. 初始化 Prometheus 指标收集器
 	metrics.Init()
 
+	go func() {
+		logger.Info("starting metrics server", "addr", ":9090")
+		if err := http.ListenAndServe(":9090", metrics.Handler()); err != nil {
+			logger.Error("metrics server failed", "err", err)
+		}
+	}()
+
 	otelShutdown, err := trace.InitTracer(context.Background(), logger)
 	if err != nil {
 		logger.Error("failed to init OpenTelemetry", "err", err)

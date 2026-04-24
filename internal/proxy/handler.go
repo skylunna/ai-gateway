@@ -164,6 +164,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	upstreamReq.Header.Set("Content-Length", fmt.Sprintf("%d", len(bodyBytes)))
 	upstreamReq.ContentLength = int64(len(bodyBytes))
 
+	h.logger.Debug("forwarding to upstream",
+		"url", upstreamReq.URL.String(),
+		"model", model,
+		"provider", provider.Name)
+
 	// 5. 执行请求
 	start := time.Now()
 	resp, err := h.executeWithRetry(upstreamReq, 1)
