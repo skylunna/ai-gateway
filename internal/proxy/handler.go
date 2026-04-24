@@ -48,6 +48,7 @@ func NewHandler(loader *config.Loader, logger *slog.Logger, c *cache.LRU, lm *li
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	start := time.Now()
 	requestID := h.extractRequestID(r)
 	// 包装 ResponseWriter，保留 context
 	rw := &responseWriter{ResponseWriter: w, ctx: r.Context()}
@@ -111,6 +112,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 缓存检查 (仅非流式)
+	// 缓存检查 (仅非流式)
 	if h.cache != nil && !stream {
 		msgJSON, _ := json.Marshal(reqPayload["messages"])
 		cacheKey := cache.GenerateKey(model, msgJSON, temp)
@@ -120,10 +122,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			rw.WriteHeader(http.StatusOK)
 			_, _ = rw.Write(cached)
 			metrics.RequestTotal.WithLabelValues(model, provider.Name, "200-cache").Inc()
+
+			// 记录缓存请求的延迟（单独 label 区分）
+			metrics.RequestDuration.WithLabelValues(model, provider.Name, "cache").Observe(time.Since(start).Seconds())
+
 			return
 		}
 	}
-
 	// 流式请求自动注入 stream_options，确保上游返回 usage 供指标统计
 	if stream {
 		if _, ok := reqPayload["stream_options"]; !ok {
@@ -170,7 +175,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		"provider", provider.Name)
 
 	// 5. 执行请求
-	start := time.Now()
+	// start := time.Now()
 	resp, err := h.executeWithRetry(upstreamReq, 1)
 	duration := time.Since(start).Seconds()
 
@@ -179,7 +184,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		statusCode = resp.StatusCode
 	}
 	metrics.RequestTotal.WithLabelValues(model, provider.Name, fmt.Sprintf("%d", statusCode)).Inc()
-	metrics.RequestDuration.WithLabelValues(model, provider.Name).Observe(duration)
+	metrics.RequestDuration.WithLabelValues(model, provider.Name, "cache").Observe(duration)
+	metrics.RequestDuration.WithLabelValues(model, provider.Name, "upstream").Observe(duration)
 	span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(statusCode))
 
 	if err != nil {

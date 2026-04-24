@@ -40,7 +40,7 @@ var (
 		Name:    "luner_request_duration_seconds",
 		Help:    "Request latency in seconds",
 		Buckets: prometheus.DefBuckets, // 默认耗时区间 [.005, .01, .025, .05, ... , 10]
-	}, []string{"model", "provider"})
+	}, []string{"model", "provider", "type"})
 
 	TokensUsed = prometheus.NewCounterVec(prometheus.CounterOpts{
 		Name: "luner_tokens_used_total",
