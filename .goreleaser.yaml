@@ -56,15 +56,10 @@ changelog:
       - Merge pull request
       - Merge branch
 
-
 dockers:
   - id: luner
-    use: buildx 
+    use: buildx
     dockerfile: Dockerfile.goreleaser
-    goos: linux 
-    goarch:
-      - amd64
-      - arm64
     image_templates:
       - "ghcr.io/skylunna/luner:{{ .Version }}"
       - "ghcr.io/skylunna/luner:latest"
