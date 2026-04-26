@@ -56,14 +56,17 @@ changelog:
       - Merge pull request
       - Merge branch
 
-dockers:
-  - image_templates:
+dockers_v2:
+  - ids:
+      - luner
+    image_templates:
       - "ghcr.io/skylunna/luner:{{ .Version }}"
       - "ghcr.io/skylunna/luner:latest"
     dockerfile: Dockerfile
+    use: buildx
     build_flag_templates:
       - "--pull"
-      - "--platform=linux/amd64,linux/arm64" 
+      - "--platform=linux/amd64,linux/arm64"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
       - "--label=org.opencontainers.image.description={{ .ProjectName }} - LLM API Gateway"
       - "--label=org.opencontainers.image.url=https://github.com/skylunna/luner"
