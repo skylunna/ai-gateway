@@ -25,7 +25,7 @@ dockers:
   - id: luner-amd64
     goos: linux
     goarch: amd64
-    dockerfile: Dockerfile
+    dockerfile: Dockerfile.goreleaser
     image_templates:
       - "ghcr.io/skylunna/luner:{{ .Version }}-amd64"
       - "ghcr.io/skylunna/luner:latest-amd64"
