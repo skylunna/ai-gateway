@@ -52,18 +52,15 @@ changelog:
       - Merge pull request
       - Merge branch
 
-dockers_v2:
+
+dockers:
   - id: luner-docker
     image_templates:
       - "ghcr.io/skylunna/luner:{{ .Version }}"
       - "ghcr.io/skylunna/luner:latest"
     dockerfile: Dockerfile
 
-    buildx: true
-
-    platforms:
-      - linux/amd64
-      - linux/arm64
+    use: buildx
     build_flag_templates:
       - "--pull"
       - "--label=org.opencontainers.image.title={{ .ProjectName }}"
@@ -73,3 +70,4 @@ dockers_v2:
       - "--label=org.opencontainers.image.version={{ .Version }}"
       - "--label=org.opencontainers.image.created={{ .Date }}"
       - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--platform=linux/amd64,linux/arm64"
