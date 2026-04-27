@@ -74,16 +74,12 @@ run_bench() {
   local CONTENT=$(cat "$OUTPUT_FILE")
 
   # 提取 QPS
-  # 提取 QPS (兼容不同 hey 版本输出格式)
   local QPS=$(echo "$CONTENT" | grep -oP 'Requests/sec:\s*\K[\d,.]+' | head -1 | tr -d ',')
   QPS=${QPS:-N/A}
 
-  # 🔧 修复：添加 % 符号匹配 (50% in xxx secs)
-  # 使用 %? 表示百分号可选，兼容旧版 hey
   local P50=$(echo "$CONTENT" | grep -oP '50%?\s+in\s+\K[\d.]+' | head -1)
   local P99=$(echo "$CONTENT" | grep -oP '99%?\s+in\s+\K[\d.]+' | head -1)
   
-  # 兜底：如果还是没匹配到，尝试更宽松的格式
   if [[ -z "$P50" ]]; then
     P50=$(echo "$CONTENT" | grep -oP '50\s+[\d.]+' | head -1 | awk '{print $2}')
   fi
