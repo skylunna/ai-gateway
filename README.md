@@ -16,7 +16,7 @@ A lightweight LLM API gateway that can be used for production. Seamlessly proxy,
 
 ---
 
-![architecture](./assets/architecture/architecture-v1.2.png)
+![architecture](./assets/architecture/architecture-v1.3.png)
 
 ---
 
