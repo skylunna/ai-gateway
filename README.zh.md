@@ -15,7 +15,7 @@
 
 ---
 
-![architecture](./assets/architecture/architecture-v1.png)
+![architecture](./assets/architecture/architecture-v1.2.png)
 
 ---
 
