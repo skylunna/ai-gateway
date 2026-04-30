@@ -14,9 +14,12 @@ services:
       - .env
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://tempo:4318
+      - OTEL_TRACES_SAMPLER=always_on
+      - OTEL_SERVICE_NAME=luner-proxy
     restart: unless-stopped
     depends_on:
       - prometheus
+      - tempo
 
   # Prometheus 采集指标
   prometheus:
@@ -61,6 +64,7 @@ services:
       - "4318:4318"
       - "3200:3200"
     volumes:
+      - ./monitoring/tempo.yaml:/etc/tempo.yaml:ro
       - tempo-data:/tmp/tempo
     command: ['-config.file=/etc/tempo.yaml']
     restart: unless-stopped

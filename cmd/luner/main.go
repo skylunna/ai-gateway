@@ -128,17 +128,15 @@ func main() {
 		}
 	}()
 
-	logger.Info("shutdown signal received, draining connections and flushing traces...")
-	if otelShutdown != nil {
-		_ = otelShutdown(context.Background()) // 等待 Trace 数据上报完成
-	}
-
 	// 9. 监听系统信号，准备优雅退出
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 
-	logger.Info("shutdown signal received, draining active connections...")
+	logger.Info("shutdown signal received, draining connections and flushing traces...")
+	if otelShutdown != nil {
+		_ = otelShutdown(context.Background())
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 

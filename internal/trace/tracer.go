@@ -23,7 +23,11 @@ func InitTracer(ctx context.Context, logger *slog.Logger) (func(context.Context)
 		return func(context.Context) error { return nil }, nil
 	}
 
-	exporter, err := otlptracehttp.New(ctx)
+	exporter, err := otlptracehttp.New(ctx,
+		otlptracehttp.WithEndpoint("tempo:4318"),
+		otlptracehttp.WithURLPath("/v1/traces"),
+		otlptracehttp.WithInsecure(),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -40,6 +44,7 @@ func InitTracer(ctx context.Context, logger *slog.Logger) (func(context.Context)
 	tp := sdktrace.NewTracerProvider(
 		sdktrace.WithBatcher(exporter),
 		sdktrace.WithResource(res),
+		sdktrace.WithSampler(sdktrace.AlwaysSample()),
 	)
 	otel.SetTracerProvider(tp)
 	otel.SetTextMapPropagator(propagation.TraceContext{})
