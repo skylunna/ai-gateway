@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"math/rand"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -151,7 +152,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	upstreamURL := provider.BaseURL + r.URL.Path
+	upstreamURL, err := url.JoinPath(provider.BaseURL, r.URL.Path)
+	if err != nil {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, "build upstream url failed")
+		h.writeAPIError(rw, api.NewError(http.StatusInternalServerError, api.ErrInternal, "invalid upstream URL", requestID))
+		return
+	}
 	upstreamReq, err := http.NewRequestWithContext(ctx, http.MethodPost, upstreamURL, bytes.NewReader(bodyBytes))
 	if err != nil {
 		span.RecordError(err)
