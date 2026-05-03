@@ -35,37 +35,62 @@ A lightweight LLM API gateway that can be used for production. Seamlessly proxy,
 ## 🚀 Quick Start
 [![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
 
+### Option 1: Demo Mode — one command, instant dashboard (recommended for evaluation)
 
-### Option 1: Docker Compose (Recommended)
 ```bash
-git clone https://github.com/skylunna/luner.git && cd luner
-docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d 
+git clone https://github.com/skylunna/luner.git
+cd luner
 
-Verify: curl http://localhost:8080/health
+# Build image and start everything (mock LLM + luner + sample data)
+docker compose up -d --build
+
+# Wait ~30 seconds for the image build and seed step
+docker compose logs -f seed-data   # watch until "Demo data ready"
 ```
 
-### Option 2: Docker Run
+Open **http://localhost:8080** — you'll see 8+ traces, cost charts, and a pre-loaded trace timeline.
+
 ```bash
-docker run -d --name luner -p 8080:8080 \
-  -v "$(pwd)/config/config.yaml:/app/config.yaml:ro" \
-  --env-file .env \
-  ghcr.io/skylunna/luner:v0.4.1
+# Verify
+curl http://localhost:8080/api/health
+curl http://localhost:8080/api/dashboard/summary
+
+# Stop and clean up
+docker compose down            # keeps data volume
+docker compose down -v         # also removes the database
+```
+
+### Option 2: Production Mode — real LLM providers
+
+```bash
+cd deployments/production
+export OPENAI_API_KEY=sk-...
+docker compose -f docker-compose.prod.yml up -d --build
 ```
 
 ### Option 3: From Source
+
 ```bash
-go build -o aigw ./cmd/luner
-./aigw -config config/config.yaml
+make build                          # builds web + Go binary
+./bin/luner --config config/config.example.yaml
 ```
 
-### Monitoring
-1. open web http://localhost:3000/
-2. click Dashboards
-3. New import && select ./grafana/luner-dashboard.json
-4. click Data sources
-5. add Prometheus
+### Option 4: With Full Monitoring Stack (Prometheus + Grafana + Tempo)
 
-![Product Logo](./assets/examples/test-result-show-web.png)
+```bash
+docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
+# Grafana: http://localhost:3000  (admin / admin)
+# Prometheus: http://localhost:9091
+```
+
+### Troubleshooting
+
+| Symptom | Fix |
+|---|---|
+| `seed-data` exits immediately | Check `docker compose logs luner` — luner may still be starting |
+| Port 8080 already in use | `lsof -ti:8080 \| xargs kill` or change the port mapping |
+| Image build fails (Go proxy) | `GOPROXY=https://goproxy.io,direct docker compose build` |
+| No data on dashboard | Run `docker compose run --rm seed-data` to re-seed |
 
 ## Configuration
 `luner` separates routing logic from secrets. Modify `config/config.yaml` at any time; changes apply automatically.

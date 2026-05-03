@@ -22,6 +22,10 @@ coverage.out
 coverage.txt
 profile.out
 
+# Node
+web/node_modules/
+node_modules/
+
 # python uv
 .venv/
 venv/

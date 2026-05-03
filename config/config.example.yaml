@@ -16,6 +16,13 @@ cache:
   max_items: 5000
   default_ttl: "2h"
 
+# storage: persistent backend for spans, tenants, api keys, and policies.
+# Leave backend empty (or omit this section) to disable storage.
+storage:
+  backend: sqlite       # sqlite | "" (disabled)
+  sqlite:
+    path: luner.db
+
 rate_limit:
   enabled: true
   providers:

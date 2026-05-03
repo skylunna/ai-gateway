@@ -1,4 +1,4 @@
-.PHONY: init run lint test build clean version
+.PHONY: init run lint test build build-web build-all clean version
 
 MODULE := github.com/skylunna/luner
 VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -20,13 +20,20 @@ else
     RM := rm -rf
 endif
 
-build:
+build-web:
+	@echo "→ Building web console..."
+	cd web && npm install --silent && npm run build
+	@echo "✓ Web console built → internal/console/dist/"
+
+build: build-web
 	go build -ldflags="-s -w \
 		-X $(MODULE)/cmd/luner.Version=$(VERSION) \
 		-X $(MODULE)/cmd/luner.commit=$(COMMIT) \
 		-X $(MODULE)/cmd/luner.buildDate=$(DATE)" \
 		-o bin/luner$(EXT) ./cmd/luner
-	@echo " Built bin/luner$(EXT) (version=$(VERSION) commit=$(COMMIT))"
+	@echo "✓ Built bin/luner$(EXT) (version=$(VERSION) commit=$(COMMIT))"
+
+build-all: build
 
 run:
 	go run ./cmd/luner -config config/config.yaml

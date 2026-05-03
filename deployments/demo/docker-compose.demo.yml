@@ -1,16 +1,12 @@
-# Quick start — demo mode with mock LLM and pre-seeded sample data.
-# For production use: deployments/production/docker-compose.prod.yml
-# For monitoring stack: docker-compose.monitoring.yml
-
-name: luner
+name: luner-demo
 
 services:
   mock-llm:
     image: python:3.11-slim
-    container_name: luner-mock-llm
+    container_name: luner-demo-mock-llm
     command: python /mock_llm.py
     volumes:
-      - ./deployments/demo/mock_llm.py:/mock_llm.py:ro
+      - ./mock_llm.py:/mock_llm.py:ro
     healthcheck:
       test: ["CMD", "python", "-c",
              "import urllib.request; urllib.request.urlopen('http://localhost:19999/health', timeout=2)"]
@@ -19,18 +15,20 @@ services:
       retries: 3
       start_period: 5s
     networks:
-      - luner-net
+      - luner-demo
     restart: unless-stopped
 
   luner:
-    build: .
-    container_name: luner
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: luner-demo
     ports:
-      - "8080:8080"   # Web console + API
-      - "9090:9090"   # Prometheus metrics
+      - "8080:8080"
+      - "9090:9090"
     volumes:
-      - ./deployments/demo/config.demo.yaml:/etc/luner/config.yaml:ro
-      - luner-data:/data
+      - ./config.demo.yaml:/etc/luner/config.yaml:ro
+      - luner-demo-data:/data
     depends_on:
       mock-llm:
         condition: service_healthy
@@ -41,28 +39,28 @@ services:
       retries: 5
       start_period: 20s
     networks:
-      - luner-net
+      - luner-demo
     restart: unless-stopped
 
   seed-data:
     image: python:3.11-slim
-    container_name: luner-seed
+    container_name: luner-demo-seed
     command: python /seed-data.py
     volumes:
-      - ./deployments/demo/seed-data.py:/seed-data.py:ro
+      - ./seed-data.py:/seed-data.py:ro
     environment:
       - LUNER_URL=http://luner:8080
     depends_on:
       luner:
         condition: service_healthy
     networks:
-      - luner-net
+      - luner-demo
     restart: "no"
 
 volumes:
-  luner-data:
+  luner-demo-data:
     driver: local
 
 networks:
-  luner-net:
+  luner-demo:
     driver: bridge

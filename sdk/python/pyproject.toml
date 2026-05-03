@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "luner"
+version = "0.5.0"
+description = "Python SDK for luner - AI Control Plane"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = [
+    {name = "luner contributors", email = "hello@luner.dev"}
+]
+keywords = ["llm", "ai", "observability", "agent", "trace"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "openai>=1.0.0",
+    "httpx>=0.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.21",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "mypy>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/skylunna/luner"
+Documentation = "https://github.com/skylunna/luner/tree/main/sdk/python"
+Repository = "https://github.com/skylunna/luner"
+Issues = "https://github.com/skylunna/luner/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["luner"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+
+[tool.black]
+line-length = 100
+target-version = ["py39"]
+
+[tool.mypy]
+python_version = "3.9"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false

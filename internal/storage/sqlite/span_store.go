@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log"
 	"time"
 
 	"github.com/skylunna/luner/internal/storage"
@@ -83,7 +84,11 @@ func (s *spanStore) CreateBatch(ctx context.Context, spans []*storage.Span) erro
 	if err != nil {
 		return &storage.StorageError{Op: "CreateBatch", Err: err}
 	}
-	defer tx.Rollback()
+	defer func() {
+		if err := tx.Rollback(); err != nil {
+			log.Printf("failed to rollback transaction: %v", err)
+		}
+	}()
 
 	stmt, err := tx.PrepareContext(ctx, insertSpanSQL)
 	if err != nil {

@@ -58,9 +58,9 @@ func New(dsn string) (storage.Storage, error) {
 	}, nil
 }
 
-func (s *store) Spans() storage.SpanStore     { return s.spans }
-func (s *store) Tenants() storage.TenantStore { return s.tenants }
-func (s *store) APIKeys() storage.APIKeyStore { return s.apiKeys }
+func (s *store) Spans() storage.SpanStore      { return s.spans }
+func (s *store) Tenants() storage.TenantStore  { return s.tenants }
+func (s *store) APIKeys() storage.APIKeyStore  { return s.apiKeys }
 func (s *store) Policies() storage.PolicyStore { return s.policies }
 func (s *store) Close() error                  { return s.db.Close() }
 
@@ -90,7 +90,9 @@ func migrate(db *sql.DB) error {
 		}
 
 		var version int
-		fmt.Sscanf(entry.Name(), "%d_", &version)
+		if _, err := fmt.Sscanf(entry.Name(), "%d_", &version); err != nil {
+			continue
+		}
 
 		var count int
 		if err := db.QueryRow("SELECT COUNT(*) FROM schema_migrations WHERE version = ?", version).Scan(&count); err != nil {

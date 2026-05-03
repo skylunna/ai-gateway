@@ -1,0 +1,34 @@
+name: luner-prod
+
+services:
+  luner:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    image: ghcr.io/skylunna/luner:latest
+    container_name: luner
+    ports:
+      - "8080:8080"
+      - "9090:9090"
+    volumes:
+      - ./config.prod.yaml:/etc/luner/config.yaml:ro
+      - luner-data:/data
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  luner-data:
+    driver: local

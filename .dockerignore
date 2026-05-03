@@ -1,0 +1,46 @@
+# VCS
+.git
+.gitignore
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts (rebuilt inside Docker)
+bin/
+internal/console/dist/
+web/node_modules/
+node_modules/
+
+# Runtime data
+*.db
+*.db-shm
+*.db-wal
+*.log
+config-demo.yaml
+
+# Secrets
+.env
+.env.*
+
+# Not needed in the image
+deployments/
+sdk/
+scripts/
+examples/
+grafana/
+monitoring/
+assets/
+docs/
+CHANGELOG.md
+CONTRIBUTING.md
+*.md
+
+# Test files
+*_test.go
+coverage.out
+
+# macOS
+.DS_Store

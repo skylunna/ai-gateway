@@ -20,32 +20,42 @@ import (
 	"github.com/skylunna/luner/internal/config"
 	"github.com/skylunna/luner/internal/limiter"
 	"github.com/skylunna/luner/internal/metrics"
+	"github.com/skylunna/luner/internal/policy"
+	lunerTrace "github.com/skylunna/luner/internal/trace"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	semconv "go.opentelemetry.io/otel/semconv/v1.24.0"
-	"go.opentelemetry.io/otel/trace"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 var tracer = otel.Tracer("luner-proxy")
 
 type Handler struct {
-	loader  *config.Loader
-	client  *http.Client
-	logger  *slog.Logger
-	cache   *cache.LRU
-	limiter *limiter.Manager
+	loader       *config.Loader
+	client       *http.Client
+	logger       *slog.Logger
+	cache        *cache.LRU
+	limiter      *limiter.Manager
+	collector    *lunerTrace.Collector
+	policyEngine policy.Engine
 }
 
-func NewHandler(loader *config.Loader, logger *slog.Logger, c *cache.LRU, lm *limiter.Manager) *Handler {
+func NewHandler(loader *config.Loader, logger *slog.Logger, c *cache.LRU, lm *limiter.Manager, collector *lunerTrace.Collector) *Handler {
 	return &Handler{
-		loader:  loader,
-		client:  &http.Client{},
-		logger:  logger,
-		cache:   c,
-		limiter: lm,
+		loader:    loader,
+		client:    &http.Client{},
+		logger:    logger,
+		cache:     c,
+		limiter:   lm,
+		collector: collector,
 	}
+}
+
+func (h *Handler) WithPolicyEngine(engine policy.Engine) *Handler {
+	h.policyEngine = engine
+	return h
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -108,6 +118,24 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if bucket != nil && !bucket.Allow() {
 			metrics.RequestTotal.WithLabelValues(model, provider.Name, "429").Inc()
 			h.writeAPIError(rw, api.NewError(http.StatusTooManyRequests, api.ErrRateLimited, "rate limit exceeded", requestID))
+			return
+		}
+	}
+
+	// Policy evaluation
+	if h.policyEngine != nil {
+		evalCtx := &policy.EvaluationContext{
+			Model:    model,
+			UserID:   r.Header.Get("X-User-Id"),
+			TenantID: r.Header.Get("X-Tenant-Id"),
+		}
+		result, err := h.policyEngine.Evaluate(ctx, evalCtx)
+		if err != nil {
+			h.logger.Warn("policy evaluation error, failing open", "err", err)
+		} else if result != nil && result.Action == policy.ActionBlock {
+			metrics.RequestTotal.WithLabelValues(model, provider.Name, "403").Inc()
+			h.writeAPIError(rw, api.NewError(http.StatusForbidden, api.ErrInvalidRequest,
+				"request blocked by policy: "+result.Message, requestID))
 			return
 		}
 	}
@@ -182,7 +210,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// 5. 执行请求
 	// start := time.Now()
-	resp, err := h.executeWithRetry(upstreamReq, 1)
+	resp, err := ExecuteWithRetry(h.client, upstreamReq, 1, h.logger)
 	duration := time.Since(start).Seconds()
 
 	statusCode := 0
@@ -190,7 +218,6 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		statusCode = resp.StatusCode
 	}
 	metrics.RequestTotal.WithLabelValues(model, provider.Name, fmt.Sprintf("%d", statusCode)).Inc()
-	metrics.RequestDuration.WithLabelValues(model, provider.Name, "cache").Observe(duration)
 	metrics.RequestDuration.WithLabelValues(model, provider.Name, "upstream").Observe(duration)
 	span.SetAttributes(semconv.HTTPResponseStatusCodeKey.Int(statusCode))
 
@@ -203,14 +230,16 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	defer resp.Body.Close()
 
 	// 6. 响应透传 & Token 统计
-	rw.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
-	rw.WriteHeader(resp.StatusCode)
-
+	// Handle upstream errors before writing any headers so Content-Type can be set correctly.
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
+		h.collectSpan(r, resp, bodyBytes, body, start)
 		h.writeAPIError(rw, api.FromUpstream(resp.StatusCode, body, requestID))
 		return
 	}
+
+	rw.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	rw.WriteHeader(resp.StatusCode)
 
 	if !stream && h.cache != nil {
 		respBody, err := io.ReadAll(resp.Body)
@@ -222,6 +251,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.cache.Set(cacheKey, respBody)
 			span.SetAttributes(attribute.Bool("cache.set", true))
 			h.parseAndRecordTokens(model, respBody)
+			h.collectSpan(r, resp, bodyBytes, respBody, start)
 		} else {
 			span.RecordError(err)
 		}
@@ -230,9 +260,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if err := h.streamUsageParser(rw, resp, model, provider.Name, requestID); err != nil {
 			h.logger.Warn("stream parse/forward failed", "err", err, "request_id", requestID)
 		}
+		h.collectSpan(r, resp, bodyBytes, nil, start)
 	} else {
 		// 非流式但未启用缓存，直接透传
-		_, _ = io.Copy(rw, resp.Body)
+		respBody, _ := io.ReadAll(resp.Body)
+		_, _ = rw.Write(respBody)
+		h.collectSpan(r, resp, bodyBytes, respBody, start)
 	}
 }
 
@@ -322,6 +355,10 @@ func (h *Handler) parseAndRecordTokens(model string, body []byte) {
 	}
 }
 
+func (h *Handler) collectSpan(req *http.Request, resp *http.Response, reqBody, respBody []byte, start time.Time) {
+	_ = h.collector.CollectLLMSpan(req, resp, reqBody, respBody, start, time.Now())
+}
+
 func (h *Handler) resolveProvider(cfg *config.Config, model string) *config.ProviderConfig {
 	for i := range cfg.Providers {
 		p := &cfg.Providers[i]
@@ -334,48 +371,11 @@ func (h *Handler) resolveProvider(cfg *config.Config, model string) *config.Prov
 	return nil
 }
 
-func (h *Handler) executeWithRetry(req *http.Request, maxRetries int) (*http.Response, error) {
-	var lastResp *http.Response
-	var lastErr error
-
-	for attempt := 0; attempt <= maxRetries; attempt++ {
-		resp, err := h.client.Do(req)
-		if err != nil {
-			lastErr = err
-			if attempt < maxRetries {
-				h.logger.Debug("retrying upstream request", "attempt", attempt+1, "err", err)
-				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-				continue
-			}
-			return nil, err
-		}
-
-		if resp.StatusCode < 500 {
-			return resp, nil
-		}
-
-		_, _ = io.Copy(io.Discard, resp.Body)
-		resp.Body.Close()
-		lastResp = resp
-		lastErr = nil
-
-		if attempt < maxRetries {
-			h.logger.Debug("upstream returned 5xx, retrying", "attempt", attempt+1, "status", resp.StatusCode)
-			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
-		}
-	}
-
-	if lastResp != nil {
-		return lastResp, nil
-	}
-	return nil, lastErr
-}
-
 // writeAPIError 统一错误入口（自动注入 TraceID）
 func (h *Handler) writeAPIError(w http.ResponseWriter, err *api.APIError) {
 	if err.Detail.RequestID == "" {
 		if rw, ok := w.(*responseWriter); ok {
-			if span := trace.SpanFromContext(rw.ctx); span.SpanContext().HasTraceID() {
+			if span := oteltrace.SpanFromContext(rw.ctx); span.SpanContext().HasTraceID() {
 				err.Detail.RequestID = span.SpanContext().TraceID().String()
 			}
 		}
@@ -389,7 +389,7 @@ func (h *Handler) extractRequestID(r *http.Request) string {
 		return rid
 	}
 
-	if span := trace.SpanFromContext(r.Context()); span.SpanContext().HasTraceID() {
+	if span := oteltrace.SpanFromContext(r.Context()); span.SpanContext().HasTraceID() {
 		return span.SpanContext().TraceID().String()
 	}
 

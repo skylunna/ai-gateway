@@ -26,6 +26,18 @@ type Config struct {
 	Providers []ProviderConfig `yaml:"providers"`
 	Cache     CacheConfig      `yaml:"cache"`
 	RateLimit RateLimitConfig  `yaml:"rate_limit"`
+	Storage   StorageConfig    `yaml:"storage"`
+}
+
+// StorageConfig selects the persistence backend.
+// Leave Backend empty to disable persistent storage.
+type StorageConfig struct {
+	Backend string       `yaml:"backend"` // "sqlite" | "" (disabled)
+	SQLite  SQLiteConfig `yaml:"sqlite"`
+}
+
+type SQLiteConfig struct {
+	Path string `yaml:"path"` // default: "luner.db"
 }
 
 type CacheConfig struct {
@@ -101,6 +113,9 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Cache.TTL == 0 {
 		cfg.Cache.TTL = 2 * time.Hour
+	}
+	if cfg.Storage.SQLite.Path == "" {
+		cfg.Storage.SQLite.Path = "luner.db"
 	}
 
 	return &cfg, nil

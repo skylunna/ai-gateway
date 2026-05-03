@@ -11,11 +11,16 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/skylunna/luner/internal/api"
 	"github.com/skylunna/luner/internal/cache"
 	"github.com/skylunna/luner/internal/config"
+	"github.com/skylunna/luner/internal/console"
 	"github.com/skylunna/luner/internal/limiter"
 	"github.com/skylunna/luner/internal/metrics"
+	"github.com/skylunna/luner/internal/policy"
 	"github.com/skylunna/luner/internal/proxy"
+	"github.com/skylunna/luner/internal/storage"
+	"github.com/skylunna/luner/internal/storage/sqlite"
 	"github.com/skylunna/luner/internal/trace"
 )
 
@@ -80,11 +85,29 @@ func main() {
 		}
 	}()
 
-	otelShutdown, err := trace.InitTracer(context.Background(), logger)
+	otelShutdown, err := trace.InitTracer(context.Background(), logger, Version)
 	if err != nil {
 		logger.Error("failed to init OpenTelemetry", "err", err)
 		os.Exit(1)
 	}
+
+	// 5. 初始化存储（可选，由配置的 storage.backend 决定）
+	var store storage.Storage
+	if cfg.Storage.Backend == "sqlite" {
+		s, err := sqlite.New(cfg.Storage.SQLite.Path)
+		if err != nil {
+			logger.Error("failed to init SQLite storage", "err", err, "path", cfg.Storage.SQLite.Path)
+			os.Exit(1)
+		}
+		defer s.Close()
+		if err := s.Health(context.Background()); err != nil {
+			logger.Error("storage health check failed", "err", err)
+			os.Exit(1)
+		}
+		store = s
+		logger.Info("storage initialized", "backend", "sqlite", "path", cfg.Storage.SQLite.Path)
+	}
+	collector := trace.NewCollector(store, logger)
 
 	var gwCache *cache.LRU
 	if cfg.Cache.Enabled {
@@ -101,14 +124,38 @@ func main() {
 		logger.Info("rate limiter enabled", "providers", len(cfg.RateLimit.Providers))
 	}
 
+	// 初始化 Policy Engine（仅在 storage 启用时）
+	var policyEngine *policy.CELEngine
+	if store != nil {
+		eng, err := policy.NewCELEngine(store, logger)
+		if err != nil {
+			logger.Error("failed to init policy engine", "err", err)
+			os.Exit(1)
+		}
+		policyEngine = eng
+		logger.Info("policy engine initialized")
+	}
+
 	// 6. 注册路由
 	mux := http.NewServeMux()
-	mux.Handle("/v1/chat/completions", proxy.NewHandler(loader, logger, gwCache, gwLimiter))
+	proxyHandler := proxy.NewHandler(loader, logger, gwCache, gwLimiter, collector)
+	if policyEngine != nil {
+		proxyHandler = proxyHandler.WithPolicyEngine(policyEngine)
+	}
+	mux.Handle("/v1/chat/completions", proxyHandler)
 	mux.Handle("/metrics", metrics.Handler())
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		fmt.Fprint(w, "ok")
 	})
+
+	// REST API + Web Console（仅在 storage 启用时挂载）
+	if store != nil {
+		apiServer := api.NewRestServerWithEngine(store, logger, policyEngine)
+		mux.Handle("/api/", apiServer)
+		logger.Info("web console enabled", "path", "/")
+	}
+	mux.Handle("/", console.Handler())
 
 	// 7. 构建 HTTP Server（注意：网络层参数不支持热重载，需重启生效）
 	server := &http.Server{
