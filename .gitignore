@@ -85,3 +85,9 @@ go.mod.bak
 
 bench_cache_hit.txt
 bench_cold_start.txt
+*.db
+*.db-shm
+*.db-wal
+config-demo.yaml
+luner
+!sdk/python/luner
