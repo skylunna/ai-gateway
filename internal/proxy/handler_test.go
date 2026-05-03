@@ -40,7 +40,7 @@ func TestProxyHandler(t *testing.T) {
 
 	metrics.Init()
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	handler := NewHandler(config.NewLoaderFromCfg(cfg), logger, nil, nil) // 需补充 NewLoaderFromCfg 用于测试
+	handler := NewHandler(config.NewLoaderFromCfg(cfg), logger, nil, nil, nil)
 
 	tests := []struct {
 		name       string

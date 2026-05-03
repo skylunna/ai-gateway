@@ -5,10 +5,13 @@ package metrics
 */
 import (
 	"net/http"
+	"sync"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
+
+var initOnce sync.Once
 
 // 定义两个核心指标 (全局变量)
 var (
@@ -48,9 +51,11 @@ var (
 	}, []string{"model", "type"})
 )
 
-// 注册指标
+// Init registers Prometheus metrics. Safe to call multiple times (e.g. in tests).
 func Init() {
-	prometheus.MustRegister(RequestTotal, RequestDuration, TokensUsed)
+	initOnce.Do(func() {
+		prometheus.MustRegister(RequestTotal, RequestDuration, TokensUsed)
+	})
 }
 
 // Handler 返回 Prometheus metrics HTTP handler

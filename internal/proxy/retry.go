@@ -2,6 +2,7 @@ package proxy
 
 import (
 	"io"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -10,7 +11,9 @@ func isRetryable(status int) bool {
 	return status >= 500 && status <= 599
 }
 
-func ExecuteWithRetry(client *http.Client, req *http.Request, maxRetries int) (*http.Response, error) {
+// ExecuteWithRetry executes the request with up to maxRetries retries on network errors or 5xx responses.
+// logger may be nil.
+func ExecuteWithRetry(client *http.Client, req *http.Request, maxRetries int, logger *slog.Logger) (*http.Response, error) {
 	var lastResp *http.Response
 	var lastErr error
 
@@ -18,28 +21,32 @@ func ExecuteWithRetry(client *http.Client, req *http.Request, maxRetries int) (*
 		resp, err := client.Do(req)
 		if err != nil {
 			lastErr = err
-			// 网络错误可重试
 			if attempt < maxRetries {
+				if logger != nil {
+					logger.Debug("retrying upstream request", "attempt", attempt+1, "err", err)
+				}
 				time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
 				continue
 			}
 			return nil, err
 		}
 		if !isRetryable(resp.StatusCode) {
-			return resp, nil // 非5xx状态码直接返回
+			return resp, nil
 		}
-		// 5xx且还有重试次数
+
 		_, _ = io.Copy(io.Discard, resp.Body)
 		resp.Body.Close()
 		lastResp = resp
-		lastErr = nil // 记录最后依次响应, 但最终会返回它
+		lastErr = nil
 
 		if attempt < maxRetries {
-			time.Sleep(time.Duration(attempt+1) * 500 * time.Microsecond)
+			if logger != nil {
+				logger.Debug("upstream returned 5xx, retrying", "attempt", attempt+1, "status", resp.StatusCode)
+			}
+			time.Sleep(time.Duration(attempt+1) * 500 * time.Millisecond)
 		}
 	}
 
-	// 所有重试失败，返回最后一次 5xx 响应
 	if lastResp != nil {
 		return lastResp, nil
 	}
