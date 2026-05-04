@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v0.5.0] - 2026-05-04
+
+### 🚀 Added
+  - add Grafana auto-provisioning for zero-config monitoring
+  - complete luner v0.5.0 — PR-3 through PR-9
+
+### 🐛 Fixed
+  - complete OTel/Tempo tracing integration
+  - use url.JoinPath for upstream URL construction
+
+### 📦 Infrastructure
+  - add CLAUDE.md, update .gitignore and README
+
+### 📖 Documentation
+  - update CHANGELOG.md for v0.4.6-test [skip ci]
+  - update readme
+  - update readme add architecture png
+  - update readme architecturev1.2
+  - update readme architecturev1.3
+  - update readme architecturev1.4
+
+
+---
+### 🔗 Quick Links
+- 📄 [Full Changelog](https://github.com/$REPO/blob/main/CHANGELOG.md)
+- 🐳 Docker: \`docker pull ghcr.io/$REPO:$VERSION\`
+- 📦 Binaries: See Assets below
+
+> 💡 **Tip**: Upgrade with \`docker compose pull && docker compose up -d\` for zero-downtime update.
+---
+
 ## [v0.4.6-test] - 2026-04-28
 
 ### 🚀 Added
