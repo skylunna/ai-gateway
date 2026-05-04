@@ -31,15 +31,21 @@ export function TraceDetail() {
 
   return (
     <div className="animate-fade-in">
-      {/* Back */}
-      <Link
-        to="/traces"
-        className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-300
-                   mb-4 transition-colors duration-150"
-      >
-        <ArrowLeft className="w-3.5 h-3.5" />
-        Back to traces
-      </Link>
+      {/* Page header */}
+      <div className="flex items-center gap-3 mb-5">
+        <Link
+          to="/traces"
+          className="inline-flex items-center justify-center w-7 h-7 rounded-lg
+                     bg-surface-800 border border-surface-500 text-slate-400
+                     hover:text-slate-200 hover:bg-surface-700 transition-colors"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+        </Link>
+        <div>
+          <h1 className="text-xl font-bold text-slate-100">Trace Detail</h1>
+          <p className="text-xs text-slate-500 mt-0.5">Full span timeline and cost breakdown</p>
+        </div>
+      </div>
 
       {/* Trace ID */}
       <p className="text-xs text-slate-500 mb-5 font-mono">

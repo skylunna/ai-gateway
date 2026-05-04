@@ -3,6 +3,7 @@ import type {
   TraceDetailResponse,
   DashboardSummary,
   CostBreakdown,
+  Policy,
 } from '../types/trace';
 
 const BASE = '/api';
@@ -43,4 +44,8 @@ export function fetchDashboardSummary(): Promise<DashboardSummary> {
 
 export function fetchCostBreakdown(): Promise<CostBreakdown> {
   return get<CostBreakdown>('/dashboard/cost');
+}
+
+export function fetchPolicies(): Promise<Policy[]> {
+  return get<Policy[]>('/policies');
 }

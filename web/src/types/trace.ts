@@ -99,3 +99,16 @@ export interface CostBreakdown {
   by_agent: CostItem[];
   by_user: CostItem[];
 }
+
+export interface Policy {
+  id: string;
+  tenant_id: string;
+  name: string;
+  expression: string;
+  action: 'block' | 'alert' | 'downgrade';
+  priority: number;
+  description: string;
+  enabled: boolean;
+  created_at: string;
+  updated_at: string;
+}

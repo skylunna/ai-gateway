@@ -4,9 +4,12 @@ import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Sparkles, Layers, DollarSign, Clock, AlertTriangle } from 'lucide-react';
+import { Sparkles, Layers, DollarSign, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
 import { fetchDashboardSummary, fetchCostBreakdown } from '../api/client';
 import type { DashboardSummary, CostBreakdown, CostItem } from '../types/trace';
+
+const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d'] as const;
+type TimeRange = typeof TIME_RANGES[number];
 
 /* ── Static mock chart data ──────────────────────────────── */
 
@@ -76,12 +79,19 @@ export function Dashboard() {
   const [summary,   setSummary]   = useState<DashboardSummary | null>(null);
   const [breakdown, setBreakdown] = useState<CostBreakdown | null>(null);
   const [error,     setError]     = useState('');
+  const [timeRange, setTimeRange] = useState<TimeRange>('24h');
+  const [tick,      setTick]      = useState(0);
+
+  const refresh = () => setTick(t => t + 1);
 
   useEffect(() => {
+    setSummary(null);
+    setBreakdown(null);
+    setError('');
     Promise.all([fetchDashboardSummary(), fetchCostBreakdown()])
       .then(([s, b]) => { setSummary(s); setBreakdown(b); })
       .catch(e => setError(e.message));
-  }, []);
+  }, [tick]);
 
   if (error) {
     return (
@@ -95,6 +105,36 @@ export function Dashboard() {
 
   return (
     <div className="animate-fade-in space-y-4">
+      {/* ── Page header ── */}
+      <div className="flex items-start justify-between mb-2">
+        <div>
+          <h1 className="text-xl font-bold text-slate-100">Dashboard</h1>
+          <p className="text-xs text-slate-500 mt-0.5">LLM gateway overview · real-time metrics</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {/* Time range tabs */}
+          <div className="flex items-center bg-surface-800 border border-surface-500 rounded-lg p-0.5">
+            {TIME_RANGES.map(r => (
+              <button
+                key={r}
+                onClick={() => setTimeRange(r)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-medium transition-colors ${
+                  timeRange === r
+                    ? 'bg-primary-600 text-white'
+                    : 'text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                {r}
+              </button>
+            ))}
+          </div>
+          <button onClick={refresh} className="btn-secondary flex items-center gap-1.5 py-1.5 text-xs">
+            <RefreshCw className="w-3.5 h-3.5" />
+            Refresh
+          </button>
+        </div>
+      </div>
+
       {/* ── Stat cards ──── */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard
