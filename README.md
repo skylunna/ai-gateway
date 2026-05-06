@@ -6,13 +6,12 @@
   <strong>English</strong> | <a href="README.zh.md">中文</a>
 </p>
 
-[![Release](https://img.shields.io/github/v/release/skylunna/luner?label=Release&color=blue)](https://github.com/your-org/luner/releases)
-[![Go](https://img.shields.io/badge/Go-1.24+-00ADD8?logo=go)](https://go.dev/)
+[![Release](https://img.shields.io/github/v/release/skylunna/luner?label=Release&color=blue)](https://github.com/skylunna/luner/releases)
+[![Go](https://img.shields.io/badge/Go-1.26+-00ADD8?logo=go)](https://go.dev/)
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/github/license/skylunna/luner?color=green)](https://github.com/skylunna/luner/blob/main/LICENSE)
 
-
-A lightweight LLM API gateway that can be used for production. Seamlessly proxy, cache, rate limit, and observe your AI workload using OpenAI compatible interfaces. Specially designed for cloud native environments and developers to prioritize experience.
+A lightweight LLM API gateway built for production. Proxy, cache, rate limit, and observe your AI workloads through an OpenAI-compatible interface — with a built-in dark-theme web console, a CEL policy engine, and zero code changes required on the client side.
 
 ---
 
@@ -22,18 +21,20 @@ A lightweight LLM API gateway that can be used for production. Seamlessly proxy,
 
 ## ✨ Features
 
-
-- **OpenAI Compatible**: Drop-in replacement for `base_url`. Zero code changes for existing Python/Node.js SDKs.
-- **High Performance**: Zero-dependency LRU cache + token-bucket rate limiting. Pure Go, constant memory footprint.
-- **Hot-Reload Configuration**: Atomic config updates via `fsnotify` & `atomic.Pointer`. Zero downtime routing changes.
-- **Full Observability**: OpenTelemetry tracing + Prometheus metrics (latency, token usage, cache hits, rate limits).
-- **Cloud-Native Ready**: Multi-arch binaries, multi-stage Dockerfile, `docker-compose` out-of-the-box.
-- **Secure by Design**: Environment variable injection, `.env` templating, 12-Factor App compliant.
+- **OpenAI Compatible** — Drop-in `base_url` replacement. Works with any OpenAI-compatible SDK.
+- **LRU Cache** — Zero-dependency in-memory cache with configurable TTL. Non-streaming requests only; key includes `model + messages + temperature`.
+- **Token-Bucket Rate Limiting** — Per-provider QPS + burst controls. Instant 429 on overflow.
+- **Full Observability** — OpenTelemetry tracing (OTLP) + Prometheus metrics. Span-level cost attribution stored in SQLite.
+- **CEL Policy Engine** — Evaluate Google CEL expressions against every request. Enforce model allowlists, per-user spend caps, or custom routing logic. Policies are stored in SQLite and hot-reloaded without a restart.
+- **Built-in Web Console** — Dark-theme React SPA served on the same port. Dashboard, Traces explorer, Policies CRUD, Settings viewer — no separate deployment.
+- **Hot-Reload Config** — `fsnotify` + `atomic.Pointer[Config]` swap routing tables with zero downtime.
+- **Cloud-Native** — Multi-arch binaries, multi-stage Dockerfile, `docker-compose` bundles.
 
 ---
 
 ## 🚀 Quick Start
-[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/your-org/luner/releases)
+
+[![Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey)](https://github.com/skylunna/luner/releases)
 
 ### Option 1: Demo Mode — one command, instant dashboard (recommended for evaluation)
 
@@ -41,14 +42,14 @@ A lightweight LLM API gateway that can be used for production. Seamlessly proxy,
 git clone https://github.com/skylunna/luner.git
 cd luner
 
-# Build image and start everything (mock LLM + luner + sample data)
+# Build image and start everything (mock LLM + luner + seed data)
 docker compose up -d --build
 
 # Wait ~30 seconds for the image build and seed step
 docker compose logs -f seed-data   # watch until "Demo data ready"
 ```
 
-Open **http://localhost:8080** — you'll see 8+ traces, cost charts, and a pre-loaded trace timeline.
+Open **http://localhost:8080** — you'll see a pre-loaded trace timeline, cost charts, and a live policy list.
 
 ```bash
 # Verify
@@ -79,7 +80,7 @@ make build                          # builds web + Go binary
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
-# Grafana: http://localhost:3000  (admin / admin)
+# Grafana:    http://localhost:3000  (admin / admin)
 # Prometheus: http://localhost:9091
 ```
 
@@ -92,14 +93,18 @@ docker compose -f docker-compose.yml -f docker-compose.monitoring.yml up -d
 | Image build fails (Go proxy) | `GOPROXY=https://goproxy.io,direct docker compose build` |
 | No data on dashboard | Run `docker compose run --rm seed-data` to re-seed |
 
+---
+
 ## Configuration
-`luner` separates routing logic from secrets. Modify `config/config.yaml` at any time; changes apply automatically.
+
+`luner` separates routing logic from secrets. Modify `config/config.yaml` at any time; changes apply atomically without restarting the process.
+
 ```yaml
 # config/config.yaml
 providers:
   - name: openai-prod
     base_url: "https://api.openai.com/v1"
-    api_key: "${OPENAI_API_KEY}"  # Injected from .env
+    api_key: "${OPENAI_API_KEY}"   # expanded from environment
     models: ["gpt-4o", "gpt-4o-mini"]
     timeout: "30s"
 
@@ -114,24 +119,111 @@ rate_limit:
     - name: openai-prod
       qps: 50.0
       burst: 10
+
+storage:
+  backend: sqlite
+  sqlite:
+    path: "data/luner.db"
 ```
-> **Hot-Reload**: Edit config.yaml and save. The gateway atomically swaps the routing table without dropping active connections.
+
+> **Hot-Reload**: Edit `config.yaml` and save. The gateway atomically swaps the routing table without dropping active connections.  
+> **Exception**: `server.listen`, `read_timeout`, and `write_timeout` require a process restart to take effect.
+
+---
+
+## Web Console
+
+The web console is a dark-theme React SPA served at **`http://localhost:8080/`**. It is embedded in the Go binary at build time and requires no separate deployment.
+
+| Page | Description |
+|---|---|
+| **Dashboard** | Summary stats (traces, spans, cost, latency, error rate) + 4 live charts: Latency P50/P99, Requests/hour, Token Consumption, Cost by Agent |
+| **Traces** | Paginated trace list with agent/user filters and status tabs. Click any trace to open the span timeline |
+| **Trace Detail** | Full span tree with per-span token counts, cost, duration, and a proportional timeline bar |
+| **Policies** | List, create, and toggle CEL policies. Each policy shows its expression, action, priority, and enabled status |
+| **Settings** | Gateway config viewer (read-only, hot-reload reminder) |
+
+---
+
+## CEL Policy Engine
+
+Policies are CEL expressions evaluated against every incoming request. A policy match triggers one of three actions: `block` (reject with 403), `alert` (log + continue), or `downgrade` (swap the model).
+
+**Available variables:**
+
+| Variable | Type | Description |
+|---|---|---|
+| `model` | string | Requested model name |
+| `user_id` | string | Value of `X-User-ID` header |
+| `tenant_id` | string | Value of `X-Tenant-ID` header |
+| `request_count` | int | Requests by this user in the last minute |
+| `cost_usd` | double | Cumulative cost (USD) by this user in the last minute |
+| `tokens_used` | int | Tokens used by this user in the last minute |
+
+**Example policies:**
+
+```json
+// Block requests to models not on the allowlist
+{ "name": "model-allowlist", "expression": "!(model in ['gpt-4o-mini', 'claude-haiku-4-5'])", "action": "block" }
+
+// Alert when a single user exceeds $0.10 in a minute
+{ "name": "spend-alert", "expression": "cost_usd > 0.10", "action": "alert" }
+
+// Downgrade power users to a cheaper model
+{ "name": "auto-downgrade", "expression": "request_count > 100", "action": "downgrade" }
+```
+
+Policies are stored in SQLite and can be managed via the REST API or the web console. Changes take effect on the next request without a restart.
+
+---
+
+## API Endpoints
+
+All REST endpoints are served on `:8080` alongside the proxy and web console.
+
+| Method | Path | Description |
+|---|---|---|
+| `GET` | `/api/health` | Health check (K8s liveness probe) |
+| `GET` | `/api/dashboard/summary` | Aggregate stats: traces, spans, cost, latency, error rate |
+| `GET` | `/api/dashboard/cost` | Cost breakdown by agent |
+| `GET` | `/api/traces` | Paginated trace list (`?page=1&page_size=20&agent_name=&user_id=`) |
+| `GET` | `/api/traces/{trace_id}` | Trace detail: summary + span tree + timeline |
+| `GET` | `/api/policies` | List all policies |
+| `POST` | `/api/policies` | Create a policy |
+| `GET` | `/api/policies/{id}` | Get a single policy |
+| `PUT` | `/api/policies/{id}` | Update a policy |
+| `DELETE` | `/api/policies/{id}` | Delete a policy |
+| `POST` | `/api/policies/reload` | Force-reload compiled CEL programs |
+| `POST` | `/v1/chat/completions` | Proxy endpoint (OpenAI-compatible) |
+| `GET` | `/metrics` | Prometheus metrics |
+
+---
+
+## Observability
+
+### Prometheus Metrics (`:9090/metrics`)
+
+| Metric | Labels | Description |
+|---|---|---|
+| `luner_requests_total` | `provider`, `model`, `status` | Request counter |
+| `luner_request_duration_seconds` | `provider`, `model` | Latency histogram |
+| `luner_tokens_used_total` | `provider`, `model`, `type` | Token accounting (`prompt`/`completion`/`total`) |
+
+### OpenTelemetry Tracing
+
+Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export spans to any OTLP-compatible backend (Jaeger, Grafana Tempo, Honeycomb, etc.). If the variable is unset, tracing is silently skipped — no startup errors in dev.
+
+---
 
 ## Client Integration
-Works with any OpenAI-compatible client. Just update `base_url`.
-### Python (uv + openai)
-```bash
-cp .env.example .env  # Configure 
-cd examples/python-sdk
-AI_GATEWAY_BASE_URL & API_KEY
-uv run python test_integration.py
-```
-### Code Example
+
+Works with any OpenAI-compatible client. Just update `base_url`:
+
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="sk-xxx",  # Placeholder, overridden by gateway
+    api_key="any-value",           # forwarded to upstream; set your real key in config.yaml
     base_url="http://localhost:8080/v1"
 )
 response = client.chat.completions.create(
@@ -140,33 +232,24 @@ response = client.chat.completions.create(
 )
 ```
 
-## Observability
-- **Metrics:** `GET /metrics` (Prometheus format)
-  - `aigw_requests_total{status="200-cache"}` → Cache hit ratio
-  - `aigw_request_duration_seconds` → Latency distribution
-  - `aigw_tokens_used_total{type="prompt|completion|total"}` → Token accounting
-- **Tracing:** Set `OTEL_EXPORTER_OTLP_ENDPOINT` to auto-export spans to Jaeger/Tempo
-- **Health:** `GET /health` (K8s compatible)
-
 ---
 
 ## 📈 Performance Benchmarks
 
-Tested on: **Ubuntu 22.04 / 8 vCPU / 16GB RAM** (production target)  
-Tooling: `hey -c 50 -n 1000` | [🔗 Reproduce script](scripts/bench.sh)
+Tested on: **Ubuntu 22.04 / 8 vCPU / 16 GB RAM**  
+Tooling: `hey -c 50 -n 1000` | [Reproduce script](scripts/bench.sh)
 
-| Scenario | QPS | P50 Latency | P99 Latency | Cache Hit | Upstream Calls | Memory (RSS) |
-|----------|-----|-------------|-------------|-----------|----------------|--------------|
-|  Cache Hit (`prompt+model+temp=0`) | **32,082** | **1.3ms** | **6.9ms** | **100%** | **0** | ~42MB |
-|  Cold Start (first request) | ~95 | ~380ms | ~1.1s | 0% | 100% | ~45MB |
-|  Direct to Upstream (baseline) | ~88 | ~365ms | ~1.0s | N/A | 100% | N/A |
-|  Rate Limited (`qps=10, burst=2`) | ~10 | ~45ms | ~180ms | variable | throttled | ~43MB |
+| Scenario | QPS | P50 | P99 | Cache Hit | Memory |
+|---|---|---|---|---|---|
+| Cache hit (`temp=0`, repeated prompt) | **32 082** | **1.3 ms** | **6.9 ms** | 100% | ~42 MB |
+| Cold start (first request) | ~95 | ~380 ms | ~1.1 s | 0% | ~45 MB |
+| Rate-limited (`qps=10, burst=2`) | ~10 | ~45 ms | ~180 ms | — | ~43 MB |
 
->  **Cache Hit**: Same `prompt+model+temperature=0` request returns from in-memory LRU cache. Zero network overhead.  
->  **Cold Start**: First request includes upstream latency + proxy routing (~5-10ms overhead).  
->  **Cross-Platform**: Binaries provided for Linux/macOS/Windows. Benchmark results vary by OS scheduler & Docker runtime; use `scripts/bench.sh` to test your environment.
+> Cache hits return from in-memory LRU with zero upstream network overhead.  
+> Results vary by OS scheduler and Docker runtime — use `scripts/bench.sh` to test your environment.
 
---- 
+---
 
 ## Contributing
+
 PRs, issues, and feedback are welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for setup guidelines, commit conventions, and `good first issue` labels.
