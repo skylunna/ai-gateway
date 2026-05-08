@@ -15,7 +15,7 @@ A lightweight LLM API gateway built for production. Proxy, cache, rate limit, an
 
 ---
 
-![architecture](./assets/architecture/architecture-v1.3.png)
+![architecture](./assets/architecture/architecture-v0.5.0.png)
 
 ---
 
