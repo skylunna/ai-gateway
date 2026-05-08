@@ -14,7 +14,7 @@
 A lightweight LLM API gateway built for production. Proxy, cache, rate limit, and observe your AI workloads through an OpenAI-compatible interface — with a built-in dark-theme web console, a CEL policy engine, and zero code changes required on the client side.
 
 ---
-
+## Architecture
 ![architecture](./assets/architecture/architecture-v0.5.0.png)
 
 ---
@@ -142,6 +142,10 @@ The web console is a dark-theme React SPA served at **`http://localhost:8080/`**
 | **Trace Detail** | Full span tree with per-span token counts, cost, duration, and a proportional timeline bar |
 | **Policies** | List, create, and toggle CEL policies. Each policy shows its expression, action, priority, and enabled status |
 | **Settings** | Gateway config viewer (read-only, hot-reload reminder) |
+
+### Demo
+![demo](./assets/demo/demo-web-v0.5.0.png)
+
 
 ---
 

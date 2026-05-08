@@ -143,6 +143,10 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 | **Policies** | 列出、创建、切换 CEL 策略。每条策略展示表达式、执行动作、优先级和启用状态 |
 | **Settings** | 网关配置查看器（只读，提示热重载路径） |
 
+
+### Demo
+![demo](./assets/demo/demo-web-v0.5.0.png)
+
 ---
 
 ## CEL 策略引擎
