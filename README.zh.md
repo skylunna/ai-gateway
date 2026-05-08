@@ -11,7 +11,9 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/github/license/skylunna/luner?color=green)](https://github.com/skylunna/luner/blob/main/LICENSE)
 
-轻量级、可用于生产的 LLM API 网关。通过与 OpenAI 兼容的接口，无缝代理、缓存、限流、观测 AI 工作负载——内置暗色主题 Web 控制台、CEL 策略引擎，客户端侧无需任何代码改动。
+
+**具有实时治理功能的AI网关** —— 在错误的LLM请求花费你的钱之前阻止它们。代理、缓存、速率限制，并通过OpenAI兼容的接口观察您的AI工作负载。
+内置的CEL策略引擎在请求到达LLM提供商之前强制执行预算和模型分配。
 
 ---
 
@@ -21,14 +23,48 @@
 
 ## ✨ 特性
 
-- **兼容 OpenAI** — 零侵入替换 `base_url`，兼容任何 OpenAI 兼容 SDK。
-- **LRU 缓存** — 零依赖内存缓存，支持 TTL 配置。仅缓存非流式请求；缓存键包含 `model + messages + temperature`。
-- **令牌桶限流** — 按 Provider 配置 QPS + Burst，超限立即返回 429。
-- **全面可观测性** — OpenTelemetry 链路追踪（OTLP）+ Prometheus 指标，Span 级别的成本归因存储于 SQLite。
-- **CEL 策略引擎** — 对每条请求执行 Google CEL 表达式求值，可实现模型白名单、用户级消费上限、自定义路由等策略。策略存储于 SQLite，热更新无需重启。
-- **内置 Web 控制台** — 暗色主题 React SPA，与网关同端口提供服务。包含 Dashboard、Traces 浏览器、Policies 管理、Settings 查看器，无需额外部署。
-- **配置热重载** — `fsnotify` + `atomic.Pointer[Config]` 原子切换路由表，零停机。
-- **云原生就绪** — 多架构二进制、多阶段 Dockerfile、开箱即用的 `docker-compose`。
+### CEL 策略引擎 — 花钱前先拦截
+
+基于 Google CEL 表达式的实时治理：
+
+```json
+// 超出预算直接拦截
+{ "expression": "cost_usd > 10.0", "action": "block" }
+
+// 高频请求自动降级到便宜模型
+{ "expression": "request_count > 100 && model == 'gpt-4o'", "action": "downgrade" }
+
+// 可疑用量触发告警
+{ "expression": "tokens_used > 50000", "action": "alert" }
+```
+
+策略存储于 SQLite，热重载无需重启。可实现模型白名单、用户级消费上限或自定义路由逻辑。
+
+---
+### 兼容 OpenAI
+零侵入替换 `base_url`，兼容任何 OpenAI 兼容 SDK。
+
+### LRU 缓存
+ — 零依赖内存缓存，支持 TTL 配置。仅缓存非流式请求；缓存键包含 `model + messages + temperature`。
+
+### 令牌桶限流
+按 Provider 配置 QPS + Burst，超限立即返回 429。
+
+### 全面可观测性
+
+OpenTelemetry 链路追踪（OTLP）+ Prometheus 指标，Span 级别的成本归因存储于 SQLite。
+
+### 内置 Web 控制台
+
+暗色主题 React SPA，与网关同端口提供服务。包含 Dashboard、Traces 浏览器、Policies 管理、Settings 查看器，无需额外部署。
+
+### 配置热重载
+
+`fsnotify` + `atomic.Pointer[Config]` 原子切换路由表，零停机。
+
+### 云原生就绪
+
+多架构二进制、多阶段 Dockerfile、开箱即用的 `docker-compose`。
 
 ---
 

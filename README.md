@@ -11,7 +11,10 @@
 [![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://docs.docker.com/compose/)
 [![License](https://img.shields.io/github/license/skylunna/luner?color=green)](https://github.com/skylunna/luner/blob/main/LICENSE)
 
-A lightweight LLM API gateway built for production. Proxy, cache, rate limit, and observe your AI workloads through an OpenAI-compatible interface — with a built-in dark-theme web console, a CEL policy engine, and zero code changes required on the client side.
+**AI Gateway with real-time governance** — Block bad LLM requests before they cost you money.
+
+Proxy, cache, rate limit, and observe your AI workloads through an OpenAI-compatible interface. 
+Built-in CEL policy engine enforces budgets and model allowlists BEFORE requests reach your LLM provider.
 
 ---
 ## Architecture
@@ -21,14 +24,48 @@ A lightweight LLM API gateway built for production. Proxy, cache, rate limit, an
 
 ## ✨ Features
 
-- **OpenAI Compatible** — Drop-in `base_url` replacement. Works with any OpenAI-compatible SDK.
-- **LRU Cache** — Zero-dependency in-memory cache with configurable TTL. Non-streaming requests only; key includes `model + messages + temperature`.
-- **Token-Bucket Rate Limiting** — Per-provider QPS + burst controls. Instant 429 on overflow.
-- **Full Observability** — OpenTelemetry tracing (OTLP) + Prometheus metrics. Span-level cost attribution stored in SQLite.
-- **CEL Policy Engine** — Evaluate Google CEL expressions against every request. Enforce model allowlists, per-user spend caps, or custom routing logic. Policies are stored in SQLite and hot-reloaded without a restart.
-- **Built-in Web Console** — Dark-theme React SPA served on the same port. Dashboard, Traces explorer, Policies CRUD, Settings viewer — no separate deployment.
-- **Hot-Reload Config** — `fsnotify` + `atomic.Pointer[Config]` swap routing tables with zero downtime.
-- **Cloud-Native** — Multi-arch binaries, multi-stage Dockerfile, `docker-compose` bundles.
+### CEL Policy Engine — Enforce Before Spending
+
+Real-time governance with Google CEL expressions:
+
+```json
+// Block requests over budget
+{ "expression": "cost_usd > 10.0", "action": "block" }
+
+// Auto-downgrade expensive models  
+{ "expression": "request_count > 100 && model == 'gpt-4o'", "action": "downgrade" }
+
+// Alert on suspicious patterns
+{ "expression": "tokens_used > 50000", "action": "alert" }
+```
+
+Policies are stored in SQLite and hot-reloaded without restart. Enforce model allowlists, per-user spend caps, or custom routing logic.
+
+---
+### OpenAI Compatible
+Drop-in `base_url` replacement. Works with any OpenAI-compatible SDK.
+
+### LRU Cache
+ — Zero-dependency in-memory cache with configurable TTL. Non-streaming requests only; key includes `model + messages + temperature`.
+
+### Token-Bucket Rate Limiting
+Per-provider QPS + burst controls. Instant 429 on overflow.
+
+### Full Observability
+
+OpenTelemetry tracing (OTLP) + Prometheus metrics. Span-level cost attribution stored in SQLite.
+
+### Built-in Web Console
+
+Dark-theme React SPA served on the same port. Dashboard, Traces explorer, Policies CRUD, Settings viewer — no separate deployment.
+
+### Hot-Reload Config
+
+`fsnotify` + `atomic.Pointer[Config]` swap routing tables with zero downtime.
+
+### Cloud-Native
+
+Multi-arch binaries, multi-stage Dockerfile, `docker-compose` bundles.
 
 ---
 
