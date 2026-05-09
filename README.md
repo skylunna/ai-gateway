@@ -250,6 +250,9 @@ All REST endpoints are served on `:8080` alongside the proxy and web console.
 | `luner_request_duration_seconds` | `provider`, `model` | Latency histogram |
 | `luner_tokens_used_total` | `provider`, `model`, `type` | Token accounting (`prompt`/`completion`/`total`) |
 
+### Grafana Dashboard
+![demo](./assets/demo/demo-grafana-0.4.0.png)
+
 ### OpenTelemetry Tracing
 
 Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export spans to any OTLP-compatible backend (Jaeger, Grafana Tempo, Honeycomb, etc.). If the variable is unset, tracing is silently skipped — no startup errors in dev.

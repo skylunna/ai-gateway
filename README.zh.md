@@ -249,6 +249,9 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 | `luner_request_duration_seconds` | `provider`, `model` | 延迟直方图 |
 | `luner_tokens_used_total` | `provider`, `model`, `type` | Token 统计（`prompt`/`completion`/`total`） |
 
+### Grafana 仪表盘
+![demo](./assets/demo/demo-grafana-0.4.0.png)
+
 ### OpenTelemetry 链路追踪
 
 设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 即可将 Span 导出到任意 OTLP 兼容后端（Jaeger、Grafana Tempo、Honeycomb 等）。未设置时静默跳过，开发环境不会报错。
