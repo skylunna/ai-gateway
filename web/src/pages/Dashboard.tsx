@@ -4,9 +4,9 @@ import {
   AreaChart, Area, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
-import { Sparkles, Layers, DollarSign, Clock, AlertTriangle, RefreshCw } from 'lucide-react';
-import { fetchDashboardSummary, fetchCostBreakdown } from '../api/client';
-import type { DashboardSummary, CostBreakdown, CostItem } from '../types/trace';
+import { Sparkles, Layers, DollarSign, Clock, AlertTriangle, RefreshCw, Database, TrendingUp, XCircle, Trash2 } from 'lucide-react';
+import { fetchDashboardSummary, fetchCostBreakdown, fetchLiveMetrics } from '../api/client';
+import type { DashboardSummary, CostBreakdown, CostItem, LiveMetrics } from '../types/trace';
 
 const TIME_RANGES = ['1h', '6h', '24h', '7d', '30d'] as const;
 type TimeRange = typeof TIME_RANGES[number];
@@ -78,7 +78,7 @@ function Dot({ color, label }: { color: string; label: string }) {
 export function Dashboard() {
   const [summary,   setSummary]   = useState<DashboardSummary | null>(null);
   const [breakdown, setBreakdown] = useState<CostBreakdown | null>(null);
-  const [error,     setError]     = useState('');
+  const [live,      setLive]      = useState<LiveMetrics | null>(null);
   const [timeRange, setTimeRange] = useState<TimeRange>('24h');
   const [tick,      setTick]      = useState(0);
 
@@ -87,21 +87,21 @@ export function Dashboard() {
   useEffect(() => {
     setSummary(null);
     setBreakdown(null);
-    setError('');
-    Promise.all([fetchDashboardSummary(), fetchCostBreakdown()])
-      .then(([s, b]) => { setSummary(s); setBreakdown(b); })
-      .catch(e => setError(e.message));
+    Promise.allSettled([fetchDashboardSummary(), fetchCostBreakdown()])
+      .then(([s, b]) => {
+        if (s.status === 'fulfilled') setSummary(s.value);
+        if (b.status === 'fulfilled') setBreakdown(b.value);
+      });
   }, [tick]);
 
-  if (error) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <div className="text-red-400 bg-red-900/20 border border-red-800/40 rounded-xl px-6 py-4 text-sm">
-          {error}
-        </div>
-      </div>
-    );
-  }
+  // poll live metrics every 5 s
+  useEffect(() => {
+    let alive = true;
+    const poll = () => fetchLiveMetrics().then(m => { if (alive) setLive(m); }).catch(() => {});
+    poll();
+    const id = setInterval(poll, 5000);
+    return () => { alive = false; clearInterval(id); };
+  }, []);
 
   return (
     <div className="animate-fade-in space-y-4">
@@ -257,6 +257,61 @@ export function Dashboard() {
         {/* Cost by agent horizontal bars */}
         <CostByAgent items={breakdown?.by_agent ?? []} />
       </div>
+
+      {/* ── Row 4: Cache & Live Metrics ── */}
+      <div>
+        <div className="flex items-center gap-2 mb-3">
+          <h2 className="text-sm font-semibold text-slate-300">Cache &amp; Live Metrics</h2>
+          <span className="flex items-center gap-1 text-[10px] text-emerald-400 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+            live · 5s
+          </span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <LiveStat
+            icon={<TrendingUp className="w-4 h-4" />}
+            iconBg="bg-emerald-500/15" iconColor="text-emerald-400"
+            label="HIT RATE"
+            value={live ? `${(live.cache.hit_rate * 100).toFixed(1)}%` : '—'}
+          />
+          <LiveStat
+            icon={<Database className="w-4 h-4" />}
+            iconBg="bg-blue-500/15" iconColor="text-blue-400"
+            label="CACHE SIZE"
+            value={live ? live.cache.size.toLocaleString() : '—'}
+          />
+          <LiveStat
+            icon={<Sparkles className="w-4 h-4" />}
+            iconBg="bg-violet-500/15" iconColor="text-violet-400"
+            label="HITS"
+            value={live ? live.cache.hits.toLocaleString() : '—'}
+          />
+          <LiveStat
+            icon={<XCircle className="w-4 h-4" />}
+            iconBg="bg-amber-500/15" iconColor="text-amber-400"
+            label="MISSES"
+            value={live ? live.cache.misses.toLocaleString() : '—'}
+          />
+          <LiveStat
+            icon={<Trash2 className="w-4 h-4" />}
+            iconBg="bg-red-500/15" iconColor="text-red-400"
+            label="LRU EVICTIONS"
+            value={live ? (live.cache.evictions['capacity'] ?? 0).toLocaleString() : '—'}
+          />
+          <LiveStat
+            icon={<Clock className="w-4 h-4" />}
+            iconBg="bg-slate-500/15" iconColor="text-slate-400"
+            label="TTL EXPIRED"
+            value={live ? (live.cache.evictions['ttl'] ?? 0).toLocaleString() : '—'}
+          />
+        </div>
+
+        {/* Request & token totals */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-3">
+          <RequestsByStatus data={live?.requests_by_status ?? {}} />
+          <TokensByType data={live?.tokens_by_type ?? {}} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -282,6 +337,113 @@ function StatCard({ icon, iconBg, iconColor, label, value, trend, trendColor }: 
       <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
       <p className="text-[26px] font-bold text-white leading-none mb-1.5 tabular-nums">{value}</p>
       <p className={`text-[11px] font-medium ${trendColor}`}>{trend}</p>
+    </div>
+  );
+}
+
+/* ── LiveStat (no trend line, for live data) ─────────────── */
+
+interface LiveStatProps {
+  icon: ReactNode;
+  iconBg: string;
+  iconColor: string;
+  label: string;
+  value: string;
+}
+
+function LiveStat({ icon, iconBg, iconColor, label, value }: LiveStatProps) {
+  return (
+    <div className="stat-card">
+      <div className={`inline-flex items-center justify-center w-9 h-9 rounded-lg mb-3 ${iconBg} ${iconColor}`}>
+        {icon}
+      </div>
+      <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1">{label}</p>
+      <p className="text-[22px] font-bold text-white leading-none tabular-nums">{value}</p>
+    </div>
+  );
+}
+
+/* ── RequestsByStatus ─────────────────────────────────────── */
+
+function RequestsByStatus({ data }: { data: Record<string, number> }) {
+  const entries = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  const total = entries.reduce((s, [, v]) => s + v, 0);
+
+  const color = (status: string) => {
+    if (status === '200-cache') return 'bg-emerald-500';
+    if (status.startsWith('2'))  return 'bg-blue-500';
+    if (status.startsWith('4'))  return 'bg-amber-500';
+    return 'bg-red-500';
+  };
+
+  return (
+    <div className="chart-card">
+      <p className="chart-title mb-1">Requests by Status</p>
+      <p className="chart-sub mb-4">cumulative · all time</p>
+      {total === 0 ? (
+        <p className="text-slate-600 text-sm">No data yet</p>
+      ) : (
+        <div className="space-y-2.5">
+          {entries.map(([status, count]) => (
+            <div key={status}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs font-mono text-slate-400">{status}</span>
+                <span className="text-xs font-semibold text-slate-300 tabular-nums">
+                  {count.toLocaleString()}
+                </span>
+              </div>
+              <div className="h-[3px] bg-surface-600 rounded-full overflow-hidden">
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${color(status)}`}
+                  style={{ width: `${(count / total) * 100}%` }}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── TokensByType ─────────────────────────────────────────── */
+
+function TokensByType({ data }: { data: Record<string, number> }) {
+  const order = ['prompt', 'completion', 'total'];
+  const entries = [...Object.entries(data)].sort(
+    (a, b) => order.indexOf(a[0]) - order.indexOf(b[0]),
+  );
+
+  const colorClass: Record<string, string> = {
+    prompt:     'text-blue-400',
+    completion: 'text-cyan-400',
+    total:      'text-violet-400',
+  };
+
+  return (
+    <div className="chart-card">
+      <p className="chart-title mb-1">Tokens by Type</p>
+      <p className="chart-sub mb-4">cumulative · all time</p>
+      {entries.length === 0 ? (
+        <p className="text-slate-600 text-sm">No data yet</p>
+      ) : (
+        <div className="grid grid-cols-3 gap-3">
+          {entries.map(([type, count]) => (
+            <div key={type} className="bg-surface-800 rounded-lg p-3 text-center">
+              <p className={`text-[11px] font-semibold uppercase tracking-wider mb-1 ${colorClass[type] ?? 'text-slate-400'}`}>
+                {type}
+              </p>
+              <p className="text-lg font-bold text-white tabular-nums">
+                {count >= 1_000_000
+                  ? `${(count / 1_000_000).toFixed(1)}M`
+                  : count >= 1_000
+                  ? `${(count / 1_000).toFixed(1)}k`
+                  : count.toString()}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

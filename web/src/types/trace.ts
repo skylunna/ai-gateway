@@ -100,6 +100,20 @@ export interface CostBreakdown {
   by_user: CostItem[];
 }
 
+export interface CacheSnap {
+  hits: number;
+  misses: number;
+  hit_rate: number;
+  size: number;
+  evictions: Record<string, number>;
+}
+
+export interface LiveMetrics {
+  cache: CacheSnap;
+  requests_by_status: Record<string, number>;
+  tokens_by_type: Record<string, number>;
+}
+
 export interface Policy {
   id: string;
   tenant_id: string;

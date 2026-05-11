@@ -3,6 +3,7 @@ import type {
   TraceDetailResponse,
   DashboardSummary,
   CostBreakdown,
+  LiveMetrics,
   Policy,
 } from '../types/trace';
 
@@ -46,6 +47,41 @@ export function fetchCostBreakdown(): Promise<CostBreakdown> {
   return get<CostBreakdown>('/dashboard/cost');
 }
 
+export function fetchLiveMetrics(): Promise<LiveMetrics> {
+  return get<LiveMetrics>('/metrics/live');
+}
+
 export function fetchPolicies(): Promise<Policy[]> {
   return get<Policy[]>('/policies');
+}
+
+export interface CreatePolicyRequest {
+  name: string;
+  expression: string;
+  action: 'block' | 'alert' | 'downgrade';
+  priority: number;
+  description: string;
+  enabled: boolean;
+  tenant_id?: string;
+}
+
+export async function createPolicy(req: CreatePolicyRequest): Promise<Policy> {
+  const res = await fetch(`${BASE}/policies`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
+  return res.json() as Promise<Policy>;
+}
+
+export async function deletePolicy(id: string): Promise<void> {
+  const res = await fetch(`${BASE}/policies/${id}`, { method: 'DELETE' });
+  if (!res.ok && res.status !== 204) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error ?? res.statusText);
+  }
 }
