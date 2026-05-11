@@ -21,14 +21,16 @@ type LRU struct {
 	items    map[string]*list.Element
 	ll       *list.List
 	mu       sync.RWMutex
+	obs      Observer
 }
 
-func NewLRU(capacity int, ttl time.Duration) *LRU {
+func NewLRU(capacity int, ttl time.Duration, obs Observer) *LRU {
 	return &LRU{
 		capacity: capacity,
 		ttl:      ttl,
 		items:    make(map[string]*list.Element),
 		ll:       list.New(),
+		obs:      obs,
 	}
 }
 
@@ -40,9 +42,19 @@ func (c *LRU) Get(key string) ([]byte, bool) {
 		item := elem.Value.(*Item)
 		if time.Now().Before(item.ExpireAt) {
 			c.ll.MoveToFront(elem)
+			if c.obs != nil {
+				c.obs.OnHit()
+			}
 			return item.Value, true
 		}
 		c.removeElement(elem)
+		if c.obs != nil {
+			c.obs.OnExpire()
+		}
+		return nil, false
+	}
+	if c.obs != nil {
+		c.obs.OnMiss()
 	}
 	return nil, false
 }
@@ -66,11 +78,17 @@ func (c *LRU) Set(key string, value []byte) {
 	item := &Item{Key: key, Value: value, ExpireAt: time.Now().Add(c.ttl)}
 	elem := c.ll.PushFront(item)
 	c.items[key] = elem
+	if c.obs != nil {
+		c.obs.OnAdd()
+	}
 }
 
 func (c *LRU) removeOldest() {
 	if elem := c.ll.Back(); elem != nil {
 		c.removeElement(elem)
+		if c.obs != nil {
+			c.obs.OnEvict()
+		}
 	}
 }
 

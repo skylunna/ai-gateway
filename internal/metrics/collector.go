@@ -49,14 +49,50 @@ var (
 		Name: "luner_tokens_used_total",
 		Help: "Total tokens consumed by model",
 	}, []string{"model", "type"})
+
+	CacheHits = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "luner_cache_hits_total",
+		Help: "Total number of cache hits",
+	})
+
+	CacheMisses = prometheus.NewCounter(prometheus.CounterOpts{
+		Name: "luner_cache_misses_total",
+		Help: "Total number of cache misses (key not found)",
+	})
+
+	// reason: "capacity" (LRU eviction) or "ttl" (TTL expiration)
+	CacheEvictions = prometheus.NewCounterVec(prometheus.CounterOpts{
+		Name: "luner_cache_evictions_total",
+		Help: "Total number of cache entries removed",
+	}, []string{"reason"})
+
+	CacheSize = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "luner_cache_size",
+		Help: "Current number of entries in the cache",
+	})
 )
 
 // Init registers Prometheus metrics. Safe to call multiple times (e.g. in tests).
 func Init() {
 	initOnce.Do(func() {
-		prometheus.MustRegister(RequestTotal, RequestDuration, TokensUsed)
+		prometheus.MustRegister(
+			RequestTotal, RequestDuration, TokensUsed,
+			CacheHits, CacheMisses, CacheEvictions, CacheSize,
+		)
 	})
 }
+
+// CacheObserver implements cache.Observer and reports events to Prometheus.
+// It carries no state — all writes go directly to package-level metric vars.
+type CacheObserver struct{}
+
+func NewCacheObserver() *CacheObserver { return &CacheObserver{} }
+
+func (*CacheObserver) OnHit()    { CacheHits.Inc() }
+func (*CacheObserver) OnMiss()   { CacheMisses.Inc() }
+func (*CacheObserver) OnExpire() { CacheEvictions.WithLabelValues("ttl").Inc(); CacheSize.Dec() }
+func (*CacheObserver) OnEvict()  { CacheEvictions.WithLabelValues("capacity").Inc(); CacheSize.Dec() }
+func (*CacheObserver) OnAdd()    { CacheSize.Inc() }
 
 // Handler 返回 Prometheus metrics HTTP handler
 // 提供 /metrics 接口
