@@ -37,24 +37,39 @@ func NewRestServerWithEngine(store storage.Storage, logger *slog.Logger, engine 
 func (s *RestServer) routes() {
 	wrap := func(h http.HandlerFunc) http.Handler { return cors(h) }
 
+	// Always available — no storage required
 	s.mux.Handle("GET /api/health", wrap(s.handleHealth))
-	s.mux.Handle("GET /api/traces", wrap(s.handleListTraces))
-	s.mux.Handle("GET /api/traces/{trace_id}", wrap(s.handleGetTrace))
-	s.mux.Handle("GET /api/dashboard/summary", wrap(s.handleDashboardSummary))
-	s.mux.Handle("GET /api/dashboard/cost", wrap(s.handleCostBreakdown))
+	s.mux.Handle("GET /api/metrics/live", wrap(s.handleLiveMetrics))
 
-	// Policy CRUD
-	s.mux.Handle("GET /api/policies", wrap(s.handleListPolicies))
-	s.mux.Handle("POST /api/policies", wrap(s.handleCreatePolicy))
-	s.mux.Handle("GET /api/policies/{id}", wrap(s.handleGetPolicy))
-	s.mux.Handle("PUT /api/policies/{id}", wrap(s.handleUpdatePolicy))
-	s.mux.Handle("DELETE /api/policies/{id}", wrap(s.handleDeletePolicy))
-	s.mux.Handle("POST /api/policies/reload", wrap(s.handleReloadPolicies))
+	// Storage-dependent endpoints
+	s.mux.Handle("GET /api/traces", wrap(s.requireStore(s.handleListTraces)))
+	s.mux.Handle("GET /api/traces/{trace_id}", wrap(s.requireStore(s.handleGetTrace)))
+	s.mux.Handle("GET /api/dashboard/summary", wrap(s.requireStore(s.handleDashboardSummary)))
+	s.mux.Handle("GET /api/dashboard/cost", wrap(s.requireStore(s.handleCostBreakdown)))
+
+	// Policy CRUD (storage-dependent)
+	s.mux.Handle("GET /api/policies", wrap(s.requireStore(s.handleListPolicies)))
+	s.mux.Handle("POST /api/policies", wrap(s.requireStore(s.handleCreatePolicy)))
+	s.mux.Handle("GET /api/policies/{id}", wrap(s.requireStore(s.handleGetPolicy)))
+	s.mux.Handle("PUT /api/policies/{id}", wrap(s.requireStore(s.handleUpdatePolicy)))
+	s.mux.Handle("DELETE /api/policies/{id}", wrap(s.requireStore(s.handleDeletePolicy)))
+	s.mux.Handle("POST /api/policies/reload", wrap(s.requireStore(s.handleReloadPolicies)))
 
 	// OPTIONS preflight for all /api/ paths
 	s.mux.Handle("OPTIONS /api/", cors(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 	})))
+}
+
+// requireStore wraps a handler and returns 503 when storage is not configured.
+func (s *RestServer) requireStore(h http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.store == nil {
+			s.errJSON(w, http.StatusServiceUnavailable, "storage not configured")
+			return
+		}
+		h(w, r)
+	}
 }
 
 func (s *RestServer) ServeHTTP(w http.ResponseWriter, r *http.Request) {

@@ -93,7 +93,7 @@ bench_cold_start.txt
 *.db-shm
 *.db-wal
 config-demo.yaml
-luner
+/luner
 !sdk/python/luner
 
 node_modules/

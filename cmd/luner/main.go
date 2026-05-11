@@ -111,7 +111,7 @@ func main() {
 
 	var gwCache *cache.LRU
 	if cfg.Cache.Enabled {
-		gwCache = cache.NewLRU(cfg.Cache.MaxItems, cfg.Cache.TTL)
+		gwCache = cache.NewLRU(cfg.Cache.MaxItems, cfg.Cache.TTL, metrics.NewCacheObserver())
 		logger.Info("LRU cache enabled", "capacity", cfg.Cache.MaxItems, "ttl", cfg.Cache.TTL)
 	}
 
@@ -149,11 +149,11 @@ func main() {
 		fmt.Fprint(w, "ok")
 	})
 
-	// REST API + Web Console（仅在 storage 启用时挂载）
+	// REST API — always mounted; storage-dependent endpoints return 503 when store is nil
+	apiServer := api.NewRestServerWithEngine(store, logger, policyEngine)
+	mux.Handle("/api/", apiServer)
 	if store != nil {
-		apiServer := api.NewRestServerWithEngine(store, logger, policyEngine)
-		mux.Handle("/api/", apiServer)
-		logger.Info("web console enabled", "path", "/")
+		logger.Info("web console storage enabled")
 	}
 	mux.Handle("/", console.Handler())
 
