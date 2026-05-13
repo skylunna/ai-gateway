@@ -41,7 +41,6 @@ Real-time governance with Google CEL expressions:
 
 Policies are stored in SQLite and hot-reloaded without restart. Enforce model allowlists, per-user spend caps, or custom routing logic.
 
----
 ### OpenAI Compatible
 Drop-in `base_url` replacement. Works with any OpenAI-compatible SDK.
 
