@@ -99,9 +99,17 @@ docker compose down -v         # 同时删除数据库
 
 ### 方案 2：生产模式 — 接入真实 LLM Provider
 
+支持任意 OpenAI 兼容的 Provider。默认生产配置使用阿里云 Qwen；如需切换到 OpenAI 或其他 Provider，编辑 `deployments/production/config.prod.yaml` 即可。
+
 ```bash
+# 阿里云百炼（DashScope / Qwen）
+echo "DASHSCOPE_API_KEY=sk-..." > .env
 cd deployments/production
-export OPENAI_API_KEY=sk-...
+docker compose -f docker-compose.prod.yml up -d --build
+
+# OpenAI — 取消注释 config.prod.yaml 中的 openai provider，然后：
+echo "OPENAI_API_KEY=sk-..." > .env
+cd deployments/production
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -173,10 +181,10 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 
 | 页面 | 说明 |
 |---|---|
-| **Dashboard** | 汇总指标（Traces 数、Spans 数、成本、延迟、错误率）+ 4 张实时图表：延迟 P50/P99、请求数/小时、Token 消耗、Agent 成本 |
+| **Dashboard** | 汇总指标（Traces 数、Spans 数、成本、延迟、错误率）+ 实时缓存指标面板（命中率、驱逐数、当前大小，每 5 秒刷新）+ 按状态的请求统计和按类型的 Token 统计图表 |
 | **Traces** | 分页 Trace 列表，支持 Agent/User 筛选和状态 Tab 切换。点击任意 Trace 查看 Span 时间线 |
 | **Trace Detail** | 完整 Span 树，含每个 Span 的 Token 数、成本、耗时及比例时间线 |
-| **Policies** | 列出、创建、切换 CEL 策略。每条策略展示表达式、执行动作、优先级和启用状态 |
+| **Policies** | 完整 CRUD：列出、创建、删除、切换 CEL 策略。每条策略展示表达式、执行动作、优先级和启用状态 |
 | **Settings** | 网关配置查看器（只读，提示热重载路径） |
 
 
@@ -221,9 +229,12 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 
 所有 REST 接口与代理、Web 控制台共用 `:8080` 端口。
 
+标有 ★ 的接口无需配置 SQLite 存储，始终可用。
+
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| `GET` | `/api/health` | 健康检查（K8s 存活探针） |
+| `GET` | `/api/health` ★ | 健康检查（K8s 存活探针） |
+| `GET` | `/api/metrics/live` ★ | 实时 JSON 快照：缓存命中率、驱逐数、按状态请求数、按类型 Token 数 |
 | `GET` | `/api/dashboard/summary` | 汇总统计：Traces、Spans、成本、延迟、错误率 |
 | `GET` | `/api/dashboard/cost` | 按 Agent 分类的成本明细 |
 | `GET` | `/api/traces` | 分页 Trace 列表（`?page=1&page_size=20&agent_name=&user_id=`） |
@@ -234,8 +245,8 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 | `PUT` | `/api/policies/{id}` | 更新策略 |
 | `DELETE` | `/api/policies/{id}` | 删除策略 |
 | `POST` | `/api/policies/reload` | 强制重新编译 CEL 程序 |
-| `POST` | `/v1/chat/completions` | 代理接口（兼容 OpenAI） |
-| `GET` | `/metrics` | Prometheus 指标 |
+| `POST` | `/v1/chat/completions` ★ | 代理接口（兼容 OpenAI） |
+| `GET` | `/metrics` ★ | Prometheus 指标 |
 
 ---
 
@@ -248,6 +259,10 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 | `luner_requests_total` | `provider`, `model`, `status` | 请求计数 |
 | `luner_request_duration_seconds` | `provider`, `model` | 延迟直方图 |
 | `luner_tokens_used_total` | `provider`, `model`, `type` | Token 统计（`prompt`/`completion`/`total`） |
+| `luner_cache_hits_total` | — | LRU 缓存命中次数 |
+| `luner_cache_misses_total` | — | LRU 缓存未命中次数 |
+| `luner_cache_evictions_total` | `reason`（`ttl`/`capacity`） | 因 TTL 过期或容量溢出被驱逐的缓存条目数 |
+| `luner_cache_size` | — | 当前 LRU 缓存中的条目数（Gauge） |
 
 ### Grafana 仪表盘
 ![demo](./assets/demo/demo-grafana-0.4.0.png)
@@ -260,20 +275,106 @@ Web 控制台是一个暗色主题的 React SPA，通过 **`http://localhost:808
 
 ## 客户端集成
 
-兼容任何支持 OpenAI 接口的客户端，只需更新 `base_url`：
+luner 是**零侵入代理**——应用代码唯一需要修改的就是 `base_url`。真实 API Key 保存在网关的 `config.yaml` 中；客户端传任意非空字符串即可。
+
+### Python（OpenAI SDK）
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="any-value",           # 转发到上游；真实 Key 在 config.yaml 中配置
-    base_url="http://localhost:8080/v1"
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",   # 真实 Key 在网关 config.yaml 中配置
 )
+
 response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "你好"}]
+    model="qwen-turbo",    # 或 gpt-4o-mini、claude-haiku-4-5 等
+    messages=[{"role": "user", "content": "你好"}],
+    temperature=0,         # temperature=0 启用 LRU 缓存
+)
+print(response.choices[0].message.content)
+```
+
+### 链路追踪请求头
+
+在每个请求中附加可选的 Header，以在 Web 控制台中丰富 Trace 信息，并为 CEL 策略提供用户级上下文：
+
+```python
+client = OpenAI(
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",
+    default_headers={
+        "X-Luner-Agent":  "my-agent",       # 在 Traces 页面显示的 Agent 名称
+        "X-Luner-User":   "user-123",        # 填充 CEL 策略中的 user_id 变量
+        "X-Luner-Tenant": "acme-corp",       # 填充 CEL 策略中的 tenant_id 变量
+    },
 )
 ```
+
+### LangChain
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="qwen-turbo",
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",
+    temperature=0,
+)
+```
+
+### 流式输出
+
+流式响应开箱即用。luner 会解析 SSE 块以提取 Token 用量，并记录到 Trace 中：
+
+```python
+with client.chat.completions.create(
+    model="qwen-turbo",
+    messages=[{"role": "user", "content": "给我讲个故事"}],
+    stream=True,
+) as stream:
+    for chunk in stream:
+        print(chunk.choices[0].delta.content or "", end="", flush=True)
+```
+
+> **注意：** 流式响应**不会被缓存**（设计如此）。只有 `temperature=0` 的非流式请求才会命中 LRU 缓存。
+
+### 生产封装模式
+
+在生产服务中，将网关 URL 和追踪 Header 集中在一处管理：
+
+```python
+# llm_client.py
+import os
+from openai import OpenAI
+
+_client = OpenAI(
+    base_url=os.environ["LUNER_URL"] + "/v1",
+    api_key="gateway",
+    default_headers={
+        "X-Luner-Agent":  os.environ.get("SERVICE_NAME", "unknown"),
+        "X-Luner-Tenant": os.environ.get("TENANT_ID", "default"),
+    },
+)
+
+def chat(messages, *, model="qwen-turbo", user_id=None, **kwargs):
+    headers = {"X-Luner-User": user_id} if user_id else {}
+    return _client.chat.completions.create(
+        model=model, messages=messages, extra_headers=headers, **kwargs
+    )
+```
+
+### 端到端演示脚本
+
+`examples/production-demo/demo.py` 对线上实例演示所有网关特性，无需额外依赖（OpenAI SDK 可选）：
+
+```bash
+pip install openai
+DASHSCOPE_API_KEY=sk-... LUNER_URL=http://localhost:8080 python examples/production-demo/demo.py
+```
+
+演示内容：健康检查 → 多 Agent 链路追踪 → LRU 缓存命中 → 限流 → 策略 CRUD + 拦截验证 → 实时指标快照 → 最近 Trace 列表 → 流式 SDK 调用。
 
 ---
 

@@ -6,37 +6,34 @@ server:
 storage:
   backend: sqlite
   sqlite:
-    path: /data/luner.db
+    path: /data/luner.db       # 持久化数据（traces、policies）
 
 providers:
-  - name: openai
-    base_url: https://api.openai.com
-    api_key: ${OPENAI_API_KEY}
+  - name: qwen
+    base_url: https://dashscope.aliyuncs.com/compatible-mode
+    api_key: ${DASHSCOPE_API_KEY}
     timeout: 30s
     models:
-      - gpt-4o
-      - gpt-4o-mini
-      - gpt-3.5-turbo
+      - qwen-turbo
+      - qwen-plus
+      - qwen-max
 
-  # - name: anthropic
-  #   base_url: https://api.anthropic.com
-  #   api_key: ${ANTHROPIC_API_KEY}
+  # - name: openai
+  #   base_url: https://api.openai.com
+  #   api_key: ${OPENAI_API_KEY}
   #   timeout: 30s
   #   models:
-  #     - claude-opus-4-5
-  #     - claude-sonnet-4-6
+  #     - gpt-4o
+  #     - gpt-4o-mini
 
 cache:
   enabled: true
   max_items: 5000
-  default_ttl: 2h
+  default_ttl: 2h        # temperature=0 的请求命中缓存后不再调用上游
 
 rate_limit:
   enabled: true
   providers:
-    - name: openai
+    - name: qwen
       qps: 10.0
       burst: 20
-
-logging:
-  level: info

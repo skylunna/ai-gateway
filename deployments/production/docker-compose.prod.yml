@@ -13,9 +13,8 @@ services:
     volumes:
       - ./config.prod.yaml:/etc/luner/config.yaml:ro
       - luner-data:/data
-    environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-      # - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+    env_file:
+      - ../../.env
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/api/health"]
       interval: 30s

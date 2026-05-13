@@ -100,9 +100,14 @@ docker compose down -v         # also removes the database
 
 ### Option 2: Production Mode — real LLM providers
 
+Supports any OpenAI-compatible provider. The default production config uses Alibaba Qwen; swap in OpenAI or any other provider by editing `deployments/production/config.prod.yaml`.
+
 ```bash
+# Copy your secrets to the project root .env file
+echo "DASHSCOPE_API_KEY=sk-..." > .env      # Alibaba Qwen
+# echo "OPENAI_API_KEY=sk-..." >> .env       # OpenAI (uncomment in config.prod.yaml)
+
 cd deployments/production
-export OPENAI_API_KEY=sk-...
 docker compose -f docker-compose.prod.yml up -d --build
 ```
 
@@ -174,10 +179,10 @@ The web console is a dark-theme React SPA served at **`http://localhost:8080/`**
 
 | Page | Description |
 |---|---|
-| **Dashboard** | Summary stats (traces, spans, cost, latency, error rate) + 4 live charts: Latency P50/P99, Requests/hour, Token Consumption, Cost by Agent |
+| **Dashboard** | Summary stats (traces, spans, cost, latency, error rate) + live cache metrics panel (hit rate, evictions, size; 5 s polling) + Requests-by-status and Tokens-by-type charts |
 | **Traces** | Paginated trace list with agent/user filters and status tabs. Click any trace to open the span timeline |
 | **Trace Detail** | Full span tree with per-span token counts, cost, duration, and a proportional timeline bar |
-| **Policies** | List, create, and toggle CEL policies. Each policy shows its expression, action, priority, and enabled status |
+| **Policies** | Full CRUD: list, create, delete, and toggle CEL policies. Each policy shows its expression, action, priority, and enabled status |
 | **Settings** | Gateway config viewer (read-only, hot-reload reminder) |
 
 ### Demo
@@ -222,9 +227,12 @@ Policies are stored in SQLite and can be managed via the REST API or the web con
 
 All REST endpoints are served on `:8080` alongside the proxy and web console.
 
+Endpoints marked ★ are always available even when SQLite storage is not configured.
+
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/api/health` | Health check (K8s liveness probe) |
+| `GET` | `/api/health` ★ | Health check (K8s liveness probe) |
+| `GET` | `/api/metrics/live` ★ | Live JSON snapshot: cache hit rate, evictions, requests by status, tokens by type |
 | `GET` | `/api/dashboard/summary` | Aggregate stats: traces, spans, cost, latency, error rate |
 | `GET` | `/api/dashboard/cost` | Cost breakdown by agent |
 | `GET` | `/api/traces` | Paginated trace list (`?page=1&page_size=20&agent_name=&user_id=`) |
@@ -235,8 +243,8 @@ All REST endpoints are served on `:8080` alongside the proxy and web console.
 | `PUT` | `/api/policies/{id}` | Update a policy |
 | `DELETE` | `/api/policies/{id}` | Delete a policy |
 | `POST` | `/api/policies/reload` | Force-reload compiled CEL programs |
-| `POST` | `/v1/chat/completions` | Proxy endpoint (OpenAI-compatible) |
-| `GET` | `/metrics` | Prometheus metrics |
+| `POST` | `/v1/chat/completions` ★ | Proxy endpoint (OpenAI-compatible) |
+| `GET` | `/metrics` ★ | Prometheus metrics |
 
 ---
 
@@ -249,6 +257,10 @@ All REST endpoints are served on `:8080` alongside the proxy and web console.
 | `luner_requests_total` | `provider`, `model`, `status` | Request counter |
 | `luner_request_duration_seconds` | `provider`, `model` | Latency histogram |
 | `luner_tokens_used_total` | `provider`, `model`, `type` | Token accounting (`prompt`/`completion`/`total`) |
+| `luner_cache_hits_total` | — | LRU cache hit counter |
+| `luner_cache_misses_total` | — | LRU cache miss counter |
+| `luner_cache_evictions_total` | `reason` (`ttl`/`capacity`) | Cache entries evicted by TTL expiry or capacity overflow |
+| `luner_cache_size` | — | Current number of entries in the LRU cache (gauge) |
 
 ### Grafana Dashboard
 ![demo](./assets/demo/demo-grafana-0.4.0.png)
@@ -261,20 +273,106 @@ Set `OTEL_EXPORTER_OTLP_ENDPOINT` to export spans to any OTLP-compatible backend
 
 ## Client Integration
 
-Works with any OpenAI-compatible client. Just update `base_url`:
+luner is a **drop-in proxy** — the only change needed in your application code is the `base_url`. Your real API key stays in `config.yaml` on the gateway; pass any non-empty string from the client.
+
+### Python (OpenAI SDK)
 
 ```python
 from openai import OpenAI
 
 client = OpenAI(
-    api_key="any-value",           # forwarded to upstream; set your real key in config.yaml
-    base_url="http://localhost:8080/v1"
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",   # real key lives in gateway config.yaml
 )
+
 response = client.chat.completions.create(
-    model="gpt-4o-mini",
-    messages=[{"role": "user", "content": "Hello"}]
+    model="qwen-turbo",    # or gpt-4o-mini, claude-haiku-4-5, etc.
+    messages=[{"role": "user", "content": "Hello"}],
+    temperature=0,         # temperature=0 enables LRU caching
+)
+print(response.choices[0].message.content)
+```
+
+### Tracing Headers
+
+Attach optional headers to every request to enrich traces in the web console and drive per-user policy evaluation:
+
+```python
+client = OpenAI(
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",
+    default_headers={
+        "X-Luner-Agent":  "my-agent",       # agent name shown in Traces
+        "X-Luner-User":   "user-123",        # populates user_id in CEL policies
+        "X-Luner-Tenant": "acme-corp",       # populates tenant_id in CEL policies
+    },
 )
 ```
+
+### LangChain
+
+```python
+from langchain_openai import ChatOpenAI
+
+llm = ChatOpenAI(
+    model="qwen-turbo",
+    base_url="http://your-luner-host:8080/v1",
+    api_key="any-value",
+    temperature=0,
+)
+```
+
+### Streaming
+
+Streaming works out of the box. luner parses SSE chunks to extract token usage and records it in the trace:
+
+```python
+with client.chat.completions.create(
+    model="qwen-turbo",
+    messages=[{"role": "user", "content": "Tell me a story"}],
+    stream=True,
+) as stream:
+    for chunk in stream:
+        print(chunk.choices[0].delta.content or "", end="", flush=True)
+```
+
+> **Note:** Streaming responses are **not cached** (by design). Only non-streaming requests with `temperature=0` are served from the LRU cache.
+
+### Production Wrapper Pattern
+
+For production services, centralise the gateway URL and tracing headers in one place:
+
+```python
+# llm_client.py
+import os
+from openai import OpenAI
+
+_client = OpenAI(
+    base_url=os.environ["LUNER_URL"] + "/v1",
+    api_key="gateway",
+    default_headers={
+        "X-Luner-Agent":  os.environ.get("SERVICE_NAME", "unknown"),
+        "X-Luner-Tenant": os.environ.get("TENANT_ID", "default"),
+    },
+)
+
+def chat(messages, *, model="qwen-turbo", user_id=None, **kwargs):
+    headers = {"X-Luner-User": user_id} if user_id else {}
+    return _client.chat.completions.create(
+        model=model, messages=messages, extra_headers=headers, **kwargs
+    )
+```
+
+### End-to-End Demo
+
+`examples/production-demo/demo.py` exercises every gateway feature against a live instance:
+
+```bash
+pip install openai
+DASHSCOPE_API_KEY=sk-... LUNER_URL=http://localhost:8080 python examples/production-demo/demo.py
+```
+
+Sections covered: health check → multi-agent tracing → LRU cache hit → rate limiting → Policy CRUD + enforcement → live metrics snapshot → recent traces → streaming SDK.
 
 ---
 
